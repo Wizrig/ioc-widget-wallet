@@ -1,0 +1,10 @@
+node_modules/
+build/
+dist/
+out/
+release/
+.DS_Store
+*.log
+.env
+*.dmg
+*.zip

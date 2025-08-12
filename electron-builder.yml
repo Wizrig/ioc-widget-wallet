@@ -1,0 +1,13 @@
+appId: io.iocoin.widgetwallet
+productName: IOC Widget Wallet
+mac:
+  category: public.app-category.finance
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  icon: assets/icon.icns
+files:
+  - "src/**"
+  - "assets/**"
+  - "package.json"
+dmg:
+  sign: false

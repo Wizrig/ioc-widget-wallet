@@ -52,24 +52,43 @@ ipcMain.handle('ioc/rpc', async (_e, {method, params}) => {
   return await safeRpc(method, params, null);
 });
 
-ipcMain.handle('ioc/status', async () => {
+/** ---- Coalesced, cached status snapshot ---- */
+const statusCache = { ts: 0, data: null, inflight: null };
+async function computeStatus() {
   const [info, bc, stake, peers, lockst] = await Promise.all([
-    safeRpc('getinfo', [], {}),
+    safeRpc('getinfo', [], {}) || {},
     (async () => {
       const bi = await safeRpc('getblockchaininfo', [], null);
       if (bi) return bi;
       const blocks = await safeRpc('getblockcount', [], 0);
       return {blocks, headers: blocks, verificationprogress: blocks ? 1 : 0};
     })(),
-    safeRpc('getstakinginfo', [], {}),
+    safeRpc('getstakinginfo', [], {}) || {},
     safeRpc('getconnectioncount', [], 0),
-    (async () => {
-      const s = await safeRpc('walletlockstatus', [], null);
-      return s || {};
-    })()
+    (async () => (await safeRpc('walletlockstatus', [], null)) || {})()
   ]);
   return { info, chain: bc, peers, staking: stake, lockst };
+}
+
+ipcMain.handle('ioc/status', async () => {
+  const now = Date.now();
+  if (statusCache.inflight) {
+    // Another caller already kicked off collection — piggyback on it.
+    return await statusCache.inflight;
+  }
+  if (statusCache.data && (now - statusCache.ts) < 1000) {
+    return statusCache.data; // fresh enough (<=1s old)
+  }
+  statusCache.inflight = computeStatus()
+    .then(data => {
+      statusCache.data = data;
+      statusCache.ts = Date.now();
+      return data;
+    })
+    .finally(() => { statusCache.inflight = null; });
+  return await statusCache.inflight;
 });
+/** ------------------------------------------- */
 
 ipcMain.handle('ioc/listaddrs', async () => {
   const groupings = await safeRpc('listaddressgroupings', [], null);
@@ -94,6 +113,24 @@ ipcMain.handle('ioc/listaddrs', async () => {
 ipcMain.handle('ioc/listtx', async (_e, n = 50) => {
   const tx = await safeRpc('listtransactions', ['*', n], []);
   return Array.isArray(tx) ? tx : [];
+});
+
+/** Create a new receiving address and label it (compat: setaccount or setlabel). */
+async function createLabeledAddress(label='') {
+  const addr = await safeRpc('getnewaddress', label ? [label] : [], null);
+  if (!addr || typeof addr !== 'string') throw new Error('could not create address');
+  await safeRpc('setaccount', [addr, label], null);
+  await safeRpc('setlabel', [addr, label], null);
+  return {address: addr, label};
+}
+
+ipcMain.handle('ioc/newaddr', async (_e, label) => {
+  try {
+    const res = await createLabeledAddress((label || '').trim());
+    return {ok: true, ...res};
+  } catch (e) {
+    return {ok: false, error: e?.message || 'failed'};
+  }
 });
 
 function createWindow() {

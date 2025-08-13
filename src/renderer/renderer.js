@@ -216,3 +216,50 @@ function main() {
   refresh();
 }
 document.addEventListener('DOMContentLoaded', main);
+
+;(function(){
+  function q(id){return document.getElementById(id)}
+  async function rpc(m, a){ try { return await window.ioc.rpc(m, a||[]) } catch(e){ throw e } }
+
+  function setupWalletTools(){
+    var d=q('btnDump'), imp=q('btnImport'), op=q('btnOpenPath');
+    if (op && window.sys) op.addEventListener('click', function(){ window.sys.openFolder() });
+
+    if (d) d.addEventListener('click', async function(){
+      var pass = prompt('Enter wallet passphrase');
+      if (!pass) return;
+      var path = prompt('Enter full .txt path to save (e.g. /Users/you/Desktop/wallet_dump.txt)');
+      if (!path || !/\.txt$/i.test(path)) { alert('Path must end with .txt'); return; }
+      try {
+        await rpc('walletpassphrase',[pass,60]);
+        await rpc('dumpwalletRT',[path]);
+        alert('Dump complete to:\n'+path);
+      } catch(e){ alert('Dump failed'); }
+      try{ await rpc('walletlock',[]) }catch(e){}
+    });
+
+    if (imp) imp.addEventListener('click', async function(){
+      var pass = prompt('Enter wallet passphrase');
+      if (!pass) return;
+      var path = prompt('Enter full path of dump .txt to import');
+      if (!path || !/\.txt$/i.test(path)) { alert('Path must end with .txt'); return; }
+      try {
+        await rpc('walletpassphrase',[pass,120]);
+        await rpc('importwallet',[path]);
+        alert('Import started');
+      } catch(e){ alert('Import failed'); }
+      try{ await rpc('walletlock',[]) }catch(e){}
+    });
+  }
+
+  function setupLiveTail(){
+    var box=q('live-tail'), st=q('start-tail'), sp=q('stop-tail');
+    if (!box || !st || !sp || !window.diag) return;
+    window.diag.onData(function(line){ box.textContent += line; box.scrollTop = box.scrollHeight; });
+    st.addEventListener('click', function(){ window.diag.startTail() });
+    sp.addEventListener('click', function(){ window.diag.stopTail() });
+  }
+
+  function init(){ setupWalletTools(); setupLiveTail(); }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();

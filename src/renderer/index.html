@@ -73,7 +73,15 @@
     <div class="panel"><div class="panel-inner"><div class="h3">DIONS</div></div></div>
   </div>
   <div id="tab-settings" class="page hidden">
-    <div class="panel"><div class="panel-inner"><div class="h3">Settings</div></div></div>
+    <div class="panel wallet-tools"><div class="panel-inner"><div class="h3">Wallet Tools</div>
+  <div class="tool-row"><button id="btnDump" class="btn">DUMP</button><button id="btnImport" class="btn">IMPORT</button><button id="btnOpenPath" class="btn">OPEN DEFAULT PATH</button></div>
+</div></div>
+
+<div class="panel"><div class="panel-inner">
+  <div class="h3">Live Debug Log</div>
+  <div class="live-tail" id="live-tail"></div>
+  <div class="diag-actions"><button id="start-tail" class="btn">Start Live Tail</button> <button id="stop-tail" class="btn">Stop</button></div>
+</div></div>
   </div>
 
   <div id="unlockModal" class="modal hidden">

@@ -21,7 +21,7 @@ function setLock(unlocked) {
   state.unlocked = !!unlocked;
   const p = $('p-lock'); if (!p) return;
   if (state.unlocked) {
-    p.setAttribute('d', 'M12 17a2 2 0 100-4 2 2 0 000 4zm7-6h-5V7a3 3 0 00-6 0H6a5 5 0 019.8-1H19v5zM6 11h13a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z');
+    p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
   } else {
     p.setAttribute('d', 'M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm3 8H9V7a3 3 0 016 0v3z');
   }

@@ -263,3 +263,55 @@ document.addEventListener('DOMContentLoaded', main);
   function init(){ setupWalletTools(); setupLiveTail(); }
   if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
+
+/* IOC_WIDGET_TOOLS_MODAL_HOOK */
+function __ioc_modal(opts){
+  return new Promise(function(res){
+    var wrap=document.createElement('div');wrap.style.position='fixed';wrap.style.inset='0';wrap.style.background='rgba(0,0,0,.45)';wrap.style.display='flex';wrap.style.alignItems='center';wrap.style.justifyContent='center';wrap.style.zIndex='9999';
+    var box=document.createElement('div');box.style.background='#0e141b';box.style.border='1px solid #12343b';box.style.borderRadius='12px';box.style.padding='16px 18px';box.style.minWidth='340px';box.style.boxShadow='0 10px 30px rgba(0,0,0,.45)';
+    var h=document.createElement('div');h.textContent=opts&&opts.title?opts.title:'Input';h.style.color='#cbd5df';h.style.fontWeight='600';h.style.margin='0 0 10px';h.style.textAlign='center';
+    var inp=document.createElement('input');inp.type=(opts&&opts.type)||'text';inp.placeholder=(opts&&opts.placeholder)||'';inp.value=(opts&&opts.value)||'';inp.style.width='100%';inp.style.padding='10px';inp.style.borderRadius='8px';inp.style.border='1px solid #243541';inp.style.background='#0b1117';inp.style.color='#e6f2f1';
+    var row=document.createElement('div');row.style.display='flex';row.style.gap='10px';row.style.marginTop='12px';row.style.justifyContent='center';
+    var ok=document.createElement('button');ok.textContent='OK';ok.className='btn';
+    var ca=document.createElement('button');ca.textContent='Cancel';ca.className='btn';
+    ok.onclick=function(){var v=inp.value;document.body.removeChild(wrap);res(v||null);};
+    ca.onclick=function(){document.body.removeChild(wrap);res(null);};
+    inp.addEventListener('keydown',function(e){if(e.key==='Enter')ok.click();if(e.key==='Escape')ca.click();});
+    row.appendChild(ok);row.appendChild(ca);box.appendChild(h);box.appendChild(inp);box.appendChild(row);wrap.appendChild(box);document.body.appendChild(wrap);setTimeout(function(){inp.focus();inp.select&&inp.select();},0);
+  });
+}
+function __ioc_defaultDumpPath(){
+  var d=new Date(),y=d.getFullYear(),m=('0'+(d.getMonth()+1)).slice(-2),da=('0'+d.getDate()).slice(-2);
+  return '/tmp/ioc-wallet-dump-'+y+m+da+'.txt';
+}
+async function __ioc_dump(){
+  try{
+    var pass=await __ioc_modal({title:'Enter wallet passphrase',type:'password',placeholder:'passphrase'}); if(!pass) return;
+    var path=await __ioc_modal({title:'Save dump as absolute path (.txt) — no ~',type:'text',value:__ioc_defaultDumpPath()}); if(!path) return;
+    if (/^~\//.test(path)) { alert('Use a full absolute path (no ~). Example: '+__ioc_defaultDumpPath()); return; }
+    try{ await window.ioc.rpc('walletpassphrase',[pass,300]); }catch(_){}
+    try{ await window.ioc.rpc('dumpwalletRT',[path]); }
+    catch(e1){
+      var msg=''+(e1&&e1.message?e1.message:e1);
+      if(/not.*found/i.test(msg)){ await window.ioc.rpc('dumpwallet',[path]); }
+      else { alert('Dump failed: '+msg); return; }
+    }
+    try{ await window.ioc.rpc('walletlock',[]); }catch(_){}
+    alert('Dump written to:\n'+path);
+  }catch(e){ alert('Dump failed'); }
+}
+async function __ioc_import(){
+  try{
+    var path=await __ioc_modal({title:'Absolute path to dump (.txt) — no ~',type:'text',placeholder:'/full/path/to/wallet-dump.txt'});
+    if(!path) return;
+    if (/^~\//.test(path)) { alert('Use a full absolute path (no ~)'); return; }
+    await window.ioc.rpc('importwallet',[path]);
+    alert('Import started:\n'+path);
+  }catch(e){ alert('Import failed'); }
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var d=document.getElementById('btnDump'); if(d&&!d.__wired){ d.addEventListener('click',function(ev){ev.preventDefault();__ioc_dump();}); d.__wired=1; }
+  var i=document.getElementById('btnImport'); if(i&&!i.__wired){ i.addEventListener('click',function(ev){ev.preventDefault();__ioc_import();}); i.__wired=1; }
+});
+/* END_IOC_WIDGET_TOOLS_MODAL_HOOK */
+

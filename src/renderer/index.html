@@ -60,7 +60,10 @@
   <div id="tab-address" class="page hidden">
     <div class="panel">
       <div class="panel-inner">
-        <div class="h3">Address Book</div>
+        <div class="address-toolbar">
+          <div class="h3">Address Book</div>
+          <button id="newAddrBtn" class="btn btn-ok sm">+ New Address</button>
+        </div>
         <div id="addrGrid" class="addr-grid"></div>
       </div>
     </div>
@@ -93,6 +96,20 @@
       <div class="row">
         <button id="cancelSend" class="btn">Cancel</button>
         <button id="doSend" class="btn btn-ok">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Address modal -->
+  <div id="newAddrModal" class="modal hidden">
+    <div class="sheet">
+      <div class="title2">Create New Receiving Address</div>
+      <input id="newLabel" type="text" placeholder="Label (optional)">
+      <div class="err" id="newAddrErr"></div>
+      <div id="newAddrResult" class="newaddr-result hidden"></div>
+      <div class="row">
+        <button id="cancelNewAddr" class="btn">Cancel</button>
+        <button id="createNewAddr" class="btn btn-ok">Create</button>
       </div>
     </div>
   </div>

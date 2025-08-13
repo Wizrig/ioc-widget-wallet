@@ -1,0 +1,15 @@
+name: No root shell scripts
+on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure no root-level .sh files
+        run: |
+          bad=$(git ls-files '*.sh' | awk -F/ 'NF==1')
+          if [ -n "$bad" ]; then
+            echo "Root-level shell scripts are not allowed:"
+            echo "$bad"
+            exit 1
+          fi

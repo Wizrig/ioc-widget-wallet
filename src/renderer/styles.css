@@ -99,3 +99,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 .chrome .chips .chip{border:0!important;outline:0!important;box-shadow:none!important;background:transparent}
 .chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important}
 
+.chrome{-webkit-app-region:drag}
+.chrome .chip,.chips,.tabs,.tab,button,a,input,textarea,select,label,.page,.panel,.card,.addr-card,.live-tail,pre,code{-webkit-app-region:no-drag}
+.modal.hidden{pointer-events:none}
+.modal{pointer-events:auto}
+

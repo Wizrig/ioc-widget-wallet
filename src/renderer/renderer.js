@@ -34,6 +34,7 @@ function setStaking(on, amount) {
   const s = $('staking'); if (s) s.textContent = on ? Number(amount || 0).toLocaleString() : '0';
 }
 
+let __resizeRAF=null;
 function fitBalance() {
   const box = $('bignum'), span = $('big-balance');
   if (!box || !span) return;
@@ -185,7 +186,7 @@ async function createNewAddr() {
 
 function main() {
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
-  window.addEventListener('resize', fitBalance);
+  window.addEventListener('resize',()=>{if(__resizeRAF)cancelAnimationFrame(__resizeRAF);__resizeRAF=requestAnimationFrame(()=>{__resizeRAF=null;fitBalance();});});
 
   document.addEventListener('visibilitychange', () => {
     // When returning to the app, refresh immediately; when hiding, the next tick will stretch.

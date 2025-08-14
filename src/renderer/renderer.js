@@ -359,3 +359,335 @@ window.addEventListener('resize', __ensureHistoryScroller);
 document.addEventListener('DOMContentLoaded', __ensureHistoryScroller);
 window.addEventListener('hashchange', __ensureHistoryScroller);
 new MutationObserver(__ensureHistoryScroller).observe(document.documentElement,{subtree:true,childList:true});
+/* ========= WALLET BACKUP BUTTON =========
+   Adds a 4th button "BACKUP" to Wallet Tools.
+   On click: copies wallet.dat to ~/Downloads/wallet-<timestamp>.dat
+   and shows both the detected source path and the saved path.
+*/
+(() => {
+  try {
+    const fs   = require('fs');
+    const path = require('path');
+    const os   = require('os');
+
+    const toolsPanel =
+      document.querySelector('[data-panel="wallet-tools"]') ||
+      document.getElementById('wallet-tools') ||
+      Array.from(document.querySelectorAll('.panel,.card,.group,.section'))
+           .find(el => /wallet\s*tools/i.test(el.textContent || '') ) ||
+      document.body;
+
+    if (!toolsPanel) return;
+
+    let row = toolsPanel.querySelector('.btn-row');
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'btn-row';
+      row.style.display = 'flex';
+      row.style.gap = '12px';
+      row.style.flexWrap = 'wrap';
+      toolsPanel.appendChild(row);
+    }
+
+    let pathLine = document.getElementById('walletDatPathLine');
+    if (!pathLine) {
+      pathLine = document.createElement('div');
+      pathLine.id = 'walletDatPathLine';
+      pathLine.style.cssText = 'margin-top:10px; opacity:.85; font-size:12px; word-break:break-all;';
+      toolsPanel.appendChild(pathLine);
+    }
+    let statusLine = document.getElementById('walletDatSaveStatus');
+    if (!statusLine) {
+      statusLine = document.createElement('div');
+      statusLine.id = 'walletDatSaveStatus';
+      statusLine.style.cssText = 'margin-top:6px; font-size:12px; opacity:.9;';
+      toolsPanel.appendChild(statusLine);
+    }
+
+    function getIocDataDir() {
+      const home = os.homedir();
+      if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'IOCoin');
+      if (process.platform === 'win32')  return path.join(process.env.APPDATA || path.join(home, 'AppData','Roaming'), 'IOCoin');
+      return path.join(home, '.IOCoin');
+    }
+    function resolveWalletDat() {
+      const base = getIocDataDir();
+      const p1 = path.join(base, 'wallet.dat');
+      const p2 = path.join(base, 'wallets', 'wallet.dat');
+      if (fs.existsSync(p1)) return p1;
+      if (fs.existsSync(p2)) return p2;
+      return p1;
+    }
+    const srcPath = resolveWalletDat();
+    pathLine.textContent = `Default wallet.dat: ${srcPath}`;
+
+    if (!document.getElementById('backupWalletBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'backupWalletBtn';
+      btn.textContent = 'BACKUP';
+      btn.className = 'btn';
+      btn.style.minWidth = '190px';
+      row.appendChild(btn);
+
+      btn.addEventListener('click', () => {
+        try {
+          btn.disabled = true;
+          statusLine.textContent = 'Saving backup…';
+
+          if (!fs.existsSync(srcPath)) {
+            statusLine.textContent = `Failed: wallet.dat not found at ${srcPath}`;
+            btn.disabled = false;
+            return;
+          }
+
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0,19);
+          const dstDir  = path.join(os.homedir(), 'Downloads');
+          const dstFile = path.join(dstDir, `wallet-${ts}.dat`);
+
+          if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
+          fs.copyFileSync(srcPath, dstFile);
+
+          statusLine.textContent = `Saved backup to: ${dstFile}`;
+          btn.disabled = false;
+        } catch (e) {
+          statusLine.textContent = `Failed: ${e?.message || e}`;
+          btn.disabled = false;
+        }
+      });
+    }
+  } catch (_) {}
+})();
+/// ========= end Wallet Backup Button =========
+(() => {
+  console.log("BACKUP button injector runs here");
+})();
+/* ===== BACKUP button injector (no require) ===== */
+(() => {
+  const getInvoke = () => {
+    if (window.electron?.ipcRenderer?.invoke) return window.electron.ipcRenderer.invoke.bind(window.electron.ipcRenderer);
+    if (window.api?.invoke) return window.api.invoke.bind(window.api);
+    return null;
+  };
+
+  const ensureStatusLine = (anchor) => {
+    let status = document.getElementById('walletDatSaveStatus');
+    if (!status) {
+      status = document.createElement('div');
+      status.id = 'walletDatSaveStatus';
+      status.style.cssText = 'margin-top:8px;font-size:12px;opacity:.9;word-break:break-all;';
+      const container = anchor.closest('.panel,.card,.group,.section') || anchor.parentElement || document.body;
+      container.appendChild(status);
+    }
+    return status;
+  };
+
+  const addButton = () => {
+    if (document.getElementById('backupWalletBtn')) return true;
+    const openBtn = Array.from(document.querySelectorAll('button'))
+      .find(b => (b.textContent||'').trim().toUpperCase() === 'IOC FOLDER');
+    if (!openBtn) return false;
+
+    const btn = document.createElement('button');
+    btn.id = 'backupWalletBtn';
+    btn.className = openBtn.className || 'btn';
+    btn.style.minWidth = '190px';
+    btn.textContent = 'BACKUP';
+    openBtn.parentElement.insertBefore(btn, openBtn.nextSibling);
+
+    const status = ensureStatusLine(openBtn);
+    const invoke = getInvoke();
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      status.textContent = 'Saving backup…';
+      if (!invoke) {
+        status.textContent = 'Failed: IPC bridge unavailable (preload missing)';
+        btn.disabled = false;
+        return;
+      }
+      try {
+        const srcPath = await invoke('ioc:wallet:getPath');
+        if (srcPath) status.textContent = `Default wallet.dat: ${srcPath} — saving…`;
+        const res = await invoke('ioc:wallet:backup');
+        if (res?.ok)        status.textContent = `Saved backup to: ${res.savedTo}`;
+        else if (res?.canceled) status.textContent = 'Backup canceled.';
+        else                status.textContent = `Failed: ${res?.error || 'unknown error'}`;
+      } catch (e) {
+        status.textContent = `Failed: ${e?.message || e}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    return true;
+  };
+
+  if (!addButton()) {
+    const mo = new MutationObserver(() => { if (addButton()) mo.disconnect(); });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+    setTimeout(addButton, 600);
+  }
+})();
+/// ===== end injector =====
+/* ===== Wallet Tools label+button fixer (no require) ===== */
+(() => {
+  if (window.__iocWalletToolsFixer) return; window.__iocWalletToolsFixer = true;
+
+  const getInvoke = () => {
+    if (window.electron?.ipcRenderer?.invoke) return window.electron.ipcRenderer.invoke.bind(window.electron.ipcRenderer);
+    if (window.api?.invoke) return window.api.invoke.bind(window.api);
+    return null;
+  };
+
+  const normalize = s => (s || '').trim().toUpperCase();
+
+  const upsertStatusLine = (anchor) => {
+    let status = document.getElementById('walletDatSaveStatus');
+    if (!status) {
+      status = document.createElement('div');
+      status.id = 'walletDatSaveStatus';
+      status.style.cssText = 'margin-top:8px;font-size:12px;opacity:.9;word-break:break-all;';
+      const container = anchor?.closest?.('.panel,.card,.group,.section') || anchor?.parentElement || document.body;
+      container.appendChild(status);
+    }
+    return status;
+  };
+
+  const ensureBackupButton = (afterBtn) => {
+    let btn = document.getElementById('backupWalletBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'backupWalletBtn';
+      btn.className = afterBtn.className || 'btn';
+      btn.style.minWidth = '160px';
+      btn.textContent = 'BACKUP';
+      if (afterBtn?.parentElement) {
+        afterBtn.parentElement.insertBefore(btn, afterBtn.nextSibling);
+      } else {
+        (document.querySelector('.btn-row') || document.body).appendChild(btn);
+      }
+    }
+    return btn;
+  };
+
+  const tryFix = () => {
+    // 1) Find the "OPEN DEFAULT PATH" button (old label) or already-renamed one
+    const allBtns = Array.from(document.querySelectorAll('button'));
+    let openBtn = allBtns.find(b => ['OPEN DEFAULT PATH', 'IOC FOLDER'].includes(normalize(b.textContent)));
+    // If not found, try fuzzy match by data-role or first 3rd button in Wallet Tools row
+    if (!openBtn) {
+      const row = document.querySelector('[data-panel="wallet-tools"] .btn-row') ||
+                  document.querySelector('#wallet-tools .btn-row') ||
+                  document.querySelector('.btn-row');
+      if (row) {
+        const btns = Array.from(row.querySelectorAll('button'));
+        openBtn = btns.find(b => /DEFAULT|FOLDER/i.test(b.textContent || '')) || btns[2];
+      }
+    }
+    if (!openBtn) return false;
+
+    // 2) Rename to "IOC FOLDER"
+    if (normalize(openBtn.textContent) !== 'IOC FOLDER') {
+      openBtn.textContent = 'IOC FOLDER';
+    }
+
+    // 3) Ensure BACKUP button exists right after IOC FOLDER
+    const backupBtn = ensureBackupButton(openBtn);
+    if (normalize(backupBtn.textContent) !== 'BACKUP') backupBtn.textContent = 'BACKUP';
+
+    // 4) Wire click to IPC backup
+    const status = upsertStatusLine(openBtn);
+    const invoke = getInvoke();
+    if (!backupBtn._iocWired) {
+      backupBtn._iocWired = true;
+      backupBtn.addEventListener('click', async () => {
+        backupBtn.disabled = true;
+        status.textContent = 'Saving backup…';
+        if (!invoke) {
+          status.textContent = 'Failed: IPC bridge unavailable (preload missing)';
+          backupBtn.disabled = false;
+          return;
+        }
+        try {
+          const srcPath = await invoke('ioc:wallet:getPath');
+          if (srcPath) status.textContent = `Default wallet.dat: ${srcPath} — saving…`;
+          const res = await invoke('ioc:wallet:backup');
+          if (res?.ok)        status.textContent = `Saved backup to: ${res.savedTo}`;
+          else if (res?.canceled) status.textContent = 'Backup canceled.';
+          else                status.textContent = `Failed: ${res?.error || 'unknown error'}`;
+        } catch (e) {
+          status.textContent = `Failed: ${e?.message || e}`;
+        } finally {
+          backupBtn.disabled = false;
+        }
+      });
+    }
+
+    return true;
+  };
+
+  // Try now and observe for Wallet Tools mounting
+  if (!tryFix()) {
+    const mo = new MutationObserver(() => { if (tryFix()) mo.disconnect(); });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+    setTimeout(tryFix, 500);
+    setTimeout(tryFix, 1200);
+  }
+})();
+/// ===== end Wallet Tools fixer =====
+/* ===== Wallet Tools layout normalizer ===== */
+(() => {
+  const normalizeWalletTools = () => {
+    // Find the Wallet Tools button row
+    const tools =
+      document.querySelector('[data-panel="wallet-tools"]') ||
+      document.getElementById('wallet-tools') ||
+      Array.from(document.querySelectorAll('.panel,.card,.group,.section'))
+        .find(el => /wallet\s*tools/i.test(el.textContent || ''));
+
+    if (!tools) return false;
+
+    let row = tools.querySelector('.btn-row');
+    if (!row) {
+      row = tools.querySelector('div');
+    }
+    if (!row) return false;
+
+    // Row layout
+    row.style.display = 'flex';
+    row.style.flexWrap = 'wrap';
+    row.style.justifyContent = 'center';
+    row.style.gap = '16px';
+
+    // Normalize every button inside Wallet Tools
+    const btns = Array.from(row.querySelectorAll('button'));
+    btns.forEach(b => {
+      b.style.flex = '0 0 auto';   // don't stretch
+      b.style.width = 'auto';
+      b.style.minWidth = '';       // clear any minWidth left over
+      b.style.padding = '6px 16px';
+      b.style.margin = '0';
+      b.style.boxSizing = 'border-box';
+    });
+
+    // Ensure our BACKUP button specifically is not wider than others
+    const backup = document.getElementById('backupWalletBtn');
+    if (backup) {
+      backup.style.flex = '0 0 auto';
+      backup.style.width = 'auto';
+      backup.style.minWidth = '';
+      backup.style.padding = '6px 16px';
+    }
+
+    return true;
+  };
+
+  // Run now and also when Settings mounts
+  if (!normalizeWalletTools()) {
+    const mo = new MutationObserver(() => { if (normalizeWalletTools()) mo.disconnect(); });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(normalizeWalletTools, 500);
+    setTimeout(normalizeWalletTools, 1200);
+  }
+})();
+/// ===== end normalizer =====

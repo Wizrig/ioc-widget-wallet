@@ -640,19 +640,6 @@ svg [data-accent="stroke"]{stroke:var(--accent) !important}
 
 
 
-;(()=>{if(window.__iocBackupBound)return;window.__iocBackupBound=true;
-function inv(){if(window.api&&typeof window.api.invoke==='function')return window.api.invoke.bind(window.api);
-if(window.electron&&window.electron.ipcRenderer&&typeof window.electron.ipcRenderer.invoke==='function')return window.electron.ipcRenderer.invoke.bind(window.electron.ipcRenderer);
-return null;}
-function bind(){
-  var panel=document.querySelector('[data-panel="wallet-tools"]')||document;
-  var btn=panel.querySelector('#btnBackup')||Array.from(panel.querySelectorAll('button')).find(b=>((b.textContent||'').trim().toUpperCase())==='BACKUP');
-  if(!btn||btn.__bk)return;
-  btn.__bk=true;
-  btn.addEventListener('click',function(e){e.preventDefault();var i=inv();if(i){i('ioc:wallet:backup').catch(()=>{});}});
-}
-if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',bind,{once:true});}else{bind();}
-})();
 
 
 /* ===== BACKUP button injector (clean, single handler, no status text) ===== */
@@ -694,52 +681,4 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 })();
 /// ===== end injector =====
 
-/* === ONE-CLICK BACKUP GUARD (capture-phase, single invoke) === */
-(()=>{ if (window.__IOC_ONE_BACKUP_CLICK) return; window.__IOC_ONE_BACKUP_CLICK = true;
 
-  function getInvoke(){
-    if (window.electron?.ipcRenderer?.invoke) return window.electron.ipcRenderer.invoke.bind(window.electron.ipcRenderer);
-    if (window.api?.invoke)                 return window.api.invoke.bind(window.api);
-    return null;
-  }
-
-  function findBackupBtn(root){
-    const idBtn = root.querySelector?.('#backupWalletBtn');
-    if (idBtn) return idBtn;
-    const byText = Array.from(root.querySelectorAll?.('button,.btn')||[])
-      .find(b => ((b.textContent||'').trim().toUpperCase()) === 'BACKUP');
-    return byText || null;
-  }
-
-  function bindOnce(btn){
-    if (!btn || btn.__iocOneHandler) return;
-    btn.__iocOneHandler = true;
-
-    let firing = false;
-    btn.addEventListener('click', async (e)=>{
-      // capture-phase: block all other handlers from firing (they're bubble-phase)
-      e.stopImmediatePropagation();
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (firing) return;
-      firing = true;
-      const invoke = getInvoke();
-      if (!invoke) { firing = false; return; }
-      try { await invoke('ioc:wallet:backup'); }
-      finally { firing = false; }
-    }, true); // <-- capture
-  }
-
-  function tryBind(){
-    const panel = document.querySelector('[data-panel="wallet-tools"]') || document;
-    const btn = findBackupBtn(panel);
-    if (btn) bindOnce(btn);
-    return !!btn;
-  }
-
-  if (!tryBind()){
-    const mo = new MutationObserver(() => { if (tryBind()) mo.disconnect(); });
-    mo.observe(document.documentElement, { childList:true, subtree:true });
-  }
-})();

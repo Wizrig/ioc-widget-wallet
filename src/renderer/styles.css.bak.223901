@@ -141,10 +141,3 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
-#tab-history .panel-inner{padding:14px 20px 12px!important;overflow:hidden!important;border-radius:14px}
-#tab-history table{table-layout:fixed;width:100%;border-collapse:separate;border-spacing:0}
-#tab-history thead th,#tab-history tbody td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 10px;line-height:1.14}
-#tab-history thead th:nth-child(1),#tab-history tbody td:nth-child(1){width:22%}
-#tab-history thead th:nth-child(2),#tab-history tbody td:nth-child(2){width:16%}
-#tab-history thead th:nth-child(3),#tab-history tbody td:nth-child(3){width:12%}
-#tab-history thead th:nth-child(4),#tab-history tbody td:nth-child(4){width:50%}

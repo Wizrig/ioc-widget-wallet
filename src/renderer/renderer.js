@@ -338,4 +338,24 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)kick();},t
 const rpc=(n,a=[])=>new Promise(res=>{let done=false;const to=setTimeout(()=>{if(!done){done=true;res(null)}},3000);try{const f=(window.ioc&&typeof window.ioc.rpc==='function')?window.ioc.rpc(n,a):null;if(!f){clearTimeout(to);return res(null)}f.then(v=>{if(!done){done=true;clearTimeout(to);res(v)}}).catch(()=>{if(!done){done=true;clearTimeout(to);res(null)}})}catch(e){clearTimeout(to);res(null)}});
 const tick=async()=>{const local=await rpc('getblockcount');let net=await rpc('getnumblocksofpeers');if(!(net>0)){const mi=await rpc('getmininginfo');if(mi&&mi.blocks)net=mi.blocks}if(!(net>=0))net=0;if(!(local>=0))net=local||0;if(net<local)net=local;const pct=net?Math.round((local/net)*100):0;if(typeof setSync==='function'){setSync(pct,`Syncing wallet (${local||0} / ${net||0} blocks)`)}else{const t=document.getElementById('syncText');if(t)t.textContent=`Syncing wallet (${local||0} / ${net||0} blocks)`;const b=document.getElementById('syncbar');if(b)b.style.width=(pct||0)+'%'}};
 setInterval(tick,3000);window.addEventListener('focus',()=>{setTimeout(tick,0)});document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});setTimeout(tick,200);
-})();
+})();function __ensureHistoryScroller(){
+  const pane = document.querySelector('#history-pane');
+  if(!pane) return;
+  let scroller = pane.querySelector('.history-scroller');
+  if(!scroller){
+    const table = pane.querySelector('table');
+    if(!table) return;
+    scroller = document.createElement('div');
+    scroller.className = 'history-scroller';
+    const parent = table.parentNode;
+    parent.replaceChild(scroller, table);
+    scroller.appendChild(table);
+  }
+  const rect = pane.getBoundingClientRect();
+  const available = Math.max(260, window.innerHeight - rect.top - 160);
+  scroller.style.maxHeight = available + 'px';
+}
+window.addEventListener('resize', __ensureHistoryScroller);
+document.addEventListener('DOMContentLoaded', __ensureHistoryScroller);
+window.addEventListener('hashchange', __ensureHistoryScroller);
+new MutationObserver(__ensureHistoryScroller).observe(document.documentElement,{subtree:true,childList:true});

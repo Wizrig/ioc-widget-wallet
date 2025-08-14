@@ -74,30 +74,31 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 
 .wallet-tools { margin-bottom: 20px; }
 
-
 .chrome .chips .chip,
-.chrome .chips .chip.ok{border:none !important;outline:none !important;box-shadow:none !important;background:transparent;}
+.chrome .chips .chip.ok {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
 .chrome .chips .chip::before,
-.chrome .chips .chip::after{content:none !important;border:0 !important;box-shadow:none !important;outline:0 !important;}
-
-
-
-.chrome .chips .chip{border:none!important;outline:none!important;box-shadow:none!important;background:transparent;}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important;border:0!important;box-shadow:none!important;outline:0!important}
-
-.chrome .chips .chip svg{width:22px;height:22px;display:block}
-.chrome .chips .chip svg path{fill:#d7e0e5}
-.chrome .chips .chip.ok svg path{fill:#18dad0}
-
-
-
-.chrome .chips .chip{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important}
-
-
-
-.chrome .chips .chip{border:0!important;outline:0!important;box-shadow:none!important;background:transparent}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important}
+.chrome .chips .chip::after {
+  content: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+.chrome .chips .chip svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.chrome .chips .chip svg path {
+  fill: #d7e0e5;
+}
+.chrome .chips .chip.ok svg path {
+  fill: #18dad0;
+}
 
 .chrome{-webkit-app-region:drag}
 .chrome .chip,.chips,.tabs,.tab,button,a,input,textarea,select,label,.page,.panel,.card,.addr-card,.live-tail,pre,code{-webkit-app-region:no-drag}

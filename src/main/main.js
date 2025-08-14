@@ -48,7 +48,7 @@ async function safeRpc(method, params = [], fallback = null) {
   try { return await callCli(method, params); } catch { return fallback; }
 }
 
-ipcMain.handle('ioc/rpc', async (_e, {method, params}) => {
+ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
   return await safeRpc(method, params, null);
 });
 

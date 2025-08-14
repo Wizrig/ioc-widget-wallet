@@ -148,3 +148,25 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 #tab-history thead th:nth-child(2),#tab-history tbody td:nth-child(2){width:16%}
 #tab-history thead th:nth-child(3),#tab-history tbody td:nth-child(3){width:12%}
 #tab-history thead th:nth-child(4),#tab-history tbody td:nth-child(4){width:50%}
+/* Tabs: kill old teal fill and use the theme accent for active/hover */
+.tabs .tab,
+.tab {
+  background-image: none !important;
+}
+
+.tabs .tab:hover,
+.tab:hover {
+  border-color: var(--accent, var(--accent-color, #2da1dd)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--accent-color, #2da1dd)) 35%, transparent) !important;
+}
+
+.tabs .tab.active,
+.tab.active,
+.tabs .tab[aria-selected="true"],
+.tab[aria-selected="true"] {
+  background: var(--accent, var(--accent-color, #2da1dd)) !important;
+  border-color: var(--accent, var(--accent-color, #2da1dd)) !important;
+  color: #0b171a !important;
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent, var(--accent-color, #2da1dd)) 35%, transparent) !important;
+  background-image: none !important;
+}

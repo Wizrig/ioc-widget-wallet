@@ -691,3 +691,220 @@ new MutationObserver(__ensureHistoryScroller).observe(document.documentElement,{
   }
 })();
 /// ===== end normalizer =====
+
+
+(function(){
+  if(window.__accentRuntimeInit)return; window.__accentRuntimeInit=true;
+
+  function ensureStyle(){
+    if(document.getElementById('accent-style')) return;
+    var css = `
+:root{--accent:#20e0d0}
+.btn,.btn.primary{background:var(--accent) !important;border-color:var(--accent) !important}
+.btn:hover{filter:brightness(1.05)}
+.tab.is-active,.tab.active{box-shadow:0 0 0 2px var(--accent) inset !important}
+.rule-accent,.accent{background:var(--accent) !important}
+#syncbar{background:var(--accent) !important}
+svg [data-accent="fill"]{fill:var(--accent) !important}
+svg [data-accent="stroke"]{stroke:var(--accent) !important}
+#accentPick{width:44px;height:32px;border:1px solid var(--border,#293442);border-radius:6px;background:#0e1420;padding:0}
+.accent-row{display:flex;gap:10px;align-items:center;margin-top:8px}
+.theme-card{margin-top:14px}
+.theme-card .card-title{font-weight:600;margin-bottom:8px}
+`;
+    var el = document.createElement('style'); el.id='accent-style'; el.textContent = css; document.head.appendChild(el);
+  }
+
+  function setAccent(c){
+    document.documentElement.style.setProperty('--accent', c);
+    try{ localStorage.setItem('accent', c) }catch(e){}
+  }
+  function getAccent(){
+    try{ return localStorage.getItem('accent') || '' }catch(e){ return '' }
+  }
+
+  function injectSettings(){
+    var tab = document.getElementById('tab-settings');
+    if(!tab || document.getElementById('accentPick')) return;
+
+    var card = document.createElement('div');
+    card.className = 'card theme-card';
+    card.innerHTML =
+      '<div class="card-title">Theme</div>' +
+      '<div class="accent-row">' +
+        '<input type="color" id="accentPick" value="#2da1dd">' +
+        '<button id="accentApply" class="btn">APPLY</button>' +
+        '<button id="accentReset" class="btn">RESET</button>' +
+      '</div>';
+
+    // Prefer placing after Wallet Tools; else append at end
+    var anchor = Array.from(tab.querySelectorAll('.card,.section')).find(x=>{
+      return /wallet\s*tools/i.test(x.textContent||'');
+    });
+    if(anchor && anchor.parentNode){
+      anchor.parentNode.insertBefore(card, anchor.nextSibling);
+    }else{
+      tab.appendChild(card);
+    }
+
+    var saved = getAccent();
+    if(saved){ setAccent(saved); var p=document.getElementById('accentPick'); if(p) p.value=saved; }
+
+    var a = document.getElementById('accentApply');
+    if(a){ a.addEventListener('click', function(){
+      var v = (document.getElementById('accentPick')||{}).value || '#2da1dd';
+      setAccent(v);
+    });}
+    var r = document.getElementById('accentReset');
+    if(r){ r.addEventListener('click', function(){
+      setAccent('#20e0d0');
+      var p=document.getElementById('accentPick'); if(p) p.value='#20e0d0';
+    });}
+  }
+
+  function init(){
+    ensureStyle();
+    var saved = getAccent(); if(saved) setAccent(saved);
+    injectSettings();
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', init, {once:true});
+  }else{
+    init();
+  }
+})();
+
+
+// === Global Accent Recolor (teal -> var(--accent)) ===
+(function(){
+  if (window.__accentGlobalRecolor) return; window.__accentGlobalRecolor = true;
+
+  // Old teal palette (hex & rgb variants) we want to override
+  const TEALS_HEX = new Set([
+    '#20e0d0','#1fe0d0','#21dfd0','#20dfcf','#22e1d1','#2ae2d4','#14e1d0',
+    '#24e0d1','#23e0d1'
+  ].map(s=>s.toLowerCase()));
+
+  // Parse "rgb(...)" or "rgba(...)" to [r,g,b,a]
+  function toRGBA(s){
+    if(!s) return null;
+    s = (''+s).trim().toLowerCase();
+    const m = s.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)$/i);
+    if(!m) return null;
+    return [parseInt(m[1]),parseInt(m[2]),parseInt(m[3]), m[4]==null?1:parseFloat(m[4])];
+  }
+  function rgbToHex([r,g,b]) {
+    return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  // Is “roughly teal”? (tolerance for slight theme variations)
+  function approxTeal(r,g,b){
+    // target ~ (32,224,208)
+    const t = [32,224,208], tol = 20;
+    return Math.abs(r-t[0])<=tol && Math.abs(g-t[1])<=tol && Math.abs(b-t[2])<=tol;
+  }
+  function isTealColor(val) {
+    if(!val) return false;
+    let v = (''+val).trim().toLowerCase();
+    if (TEALS_HEX.has(v)) return true;
+    const rgba = toRGBA(v);
+    if (rgba){
+      const [r,g,b] = rgba;
+      if (approxTeal(r,g,b)) return true;
+      const hex = rgbToHex([r,g,b]);
+      if (TEALS_HEX.has(hex)) return true;
+    }
+    return false;
+  }
+
+  // Box-shadow can carry color strings; replace teal-like pieces
+  function normalizeShadow(sh){
+    if(!sh) return sh;
+    let v = (''+sh);
+    // Replace any rgb(a) teal-ish with var(--accent)
+    v = v.replace(/rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[0-9.]+)?\s*\)/gi, (m)=>{
+      const rgba = toRGBA(m);
+      return (rgba && approxTeal(rgba[0],rgba[1],rgba[2])) ? 'var(--accent)' : m;
+    });
+    // Replace direct hex teals
+    TEALS_HEX.forEach(hex=>{
+      v = v.replace(new RegExp(hex,'gi'),'var(--accent)');
+    });
+    return v;
+  }
+
+  // Apply inline overrides to any element that uses teal
+  const COLOR_PROPS = [
+    'color','backgroundColor','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor','outlineColor'
+  ];
+  function recolorElement(el){
+    try{
+      const cs = getComputedStyle(el);
+      let changed = false;
+
+      // Colors
+      COLOR_PROPS.forEach(prop=>{
+        const val = cs[prop];
+        if (isTealColor(val)) {
+          el.style[prop] = 'var(--accent)';
+          changed = true;
+        }
+      });
+
+      // Box shadow
+      if (cs.boxShadow && /rgb|#/.test(cs.boxShadow)) {
+        const replaced = normalizeShadow(cs.boxShadow);
+        if (replaced !== cs.boxShadow) {
+          el.style.boxShadow = replaced;
+          changed = true;
+        }
+      }
+
+      // SVG: map teal fills/strokes to currentColor, then set color to var(--accent)
+      if (el.tagName === 'SVG' || el.querySelector && el.querySelector('svg')){
+        const svgs = el.tagName==='SVG' ? [el] : el.querySelectorAll('svg');
+        svgs.forEach(svg=>{
+          svg.querySelectorAll('*').forEach(n=>{
+            const gs = getComputedStyle(n);
+            const f = gs.fill, st = gs.stroke;
+            if (isTealColor(f)) { n.style.fill = 'currentColor'; svg.style.color='var(--accent)'; changed=true; }
+            if (isTealColor(st)) { n.style.stroke = 'currentColor'; svg.style.color='var(--accent)'; changed=true; }
+          });
+        });
+      }
+
+      return changed;
+    }catch(e){ return false; }
+  }
+
+  function walk(root){
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+    let node = root.nodeType===1 ? root : walker.nextNode();
+    if(root.nodeType===1) recolorElement(root);
+    while(node = walker.nextNode()){
+      recolorElement(node);
+    }
+  }
+
+  function recolorAll(){ walk(document.body || document); }
+
+  // Observe future DOM changes so new nodes get the accent too
+  const mo = new MutationObserver((muts)=>{
+    for(const m of muts){
+      for(const n of m.addedNodes){
+        if (n.nodeType===1) walk(n);
+      }
+    }
+  });
+
+  if (document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', ()=>{
+      recolorAll();
+      try{ mo.observe(document.body, {childList:true, subtree:true}); }catch(e){}
+    }, {once:true});
+  } else {
+    recolorAll();
+    try{ mo.observe(document.body, {childList:true, subtree:true}); }catch(e){}
+  }
+})();
+

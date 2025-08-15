@@ -1,4 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('electronAPI', {
-  backupWallet: () => ipcRenderer.invoke('ioc:wallet:backup')
-});
+
+function rpc(method, params = []) {
+  return ipcRenderer.invoke('ioc:rpc', method, params);
+}
+function status() {
+  return ipcRenderer.invoke('ioc:status');
+}
+
+contextBridge.exposeInMainWorld('ioc', { rpc, status });
+// Back-compat alias some of your code uses:
+contextBridge.exposeInMainWorld('callRpc', rpc);

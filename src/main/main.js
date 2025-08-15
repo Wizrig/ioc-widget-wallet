@@ -1,3 +1,22 @@
+try {
+  if (!global.__IOC_LOCKED_WINDOW__) {
+    const { app, BrowserWindow } = require('electron');
+    app.on('browser-window-created', (_evt, win) => {
+      // Lock size once it has its final dimensions
+      win.once('ready-to-show', () => {
+        try {
+          const [w, h] = win.getSize();
+          win.setResizable(false);
+          win.setMinimumSize(w, h);
+          win.setMaximumSize(w, h);
+        } catch {}
+      });
+    });
+    global.__IOC_LOCKED_WINDOW__ = true;
+  }
+} catch {}
+
+try { require('./ipc-ui'); } catch {}
 try { require('./rpc-compat').init(); } catch {}
 const {app, BrowserWindow, ipcMain} = require('electron');
 const path = require('path');

@@ -1676,127 +1676,66 @@ async function loadHistory() {
   document.addEventListener('DOMContentLoaded', apply);
   new MutationObserver(apply).observe(document.body,{subtree:true,childList:true});
 })();
-// --- Generic pane scroller (keeps top bar static, scrolls inside each pane) ---
+// IOC_PANESCROLL_V4
 (function(){
-  if (window.__IOC_PANE_SCROLLER__) return; window.__IOC_PANE_SCROLLER__ = true;
+  const KEY='IOC_PANESCROLL_V4'; if (window[KEY]) return; window[KEY]=true;
 
-  function ensureOnePaneScroller(pane){
-    if (!pane) return;
+  const PANE_SELECTORS = [
+    '#history', '#address', '#dions', '#settings',
+    '[data-panel="history"]', '[data-panel="address"]', '[data-panel="dions"]', '[data-panel="settings"]',
+    '[data-tab="history"]',   '[data-tab="address"]',   '[data-tab="dions"]',   '[data-tab="settings"]'
+  ];
 
-    // We keep the first heading (H2/H3 with the pane title) above the scroller.
-    // All other siblings become scrollable content.
-    let scroller = pane.querySelector(':scope > .pane-scroller');
-    if (!scroller){
-      scroller = document.createElement('div');
-      scroller.className = 'pane-scroller';
-
-      // Pick a stable header node if present
-      const header = Array.from(pane.children).find(n=>{
-        if (!n || n.nodeType!==1) return false;
-        const tag = (n.tagName||'').toUpperCase();
-        if (tag==='H1' || tag==='H2' || tag==='H3') return true;
-        // Some themes use a title div; keep anything that literally says History / Wallet Tools / Address / Settings at the top.
-        const txt = (n.textContent||'').trim().toLowerCase();
-        return /^history$|wallet\s*tools|address\s*book|dions|settings/.test(txt);
-      });
-
-      // Move the rest of the nodes into the scroller, keep header in place
-      const kids = Array.from(pane.children);
-      kids.forEach(k=>{
-        if (k!==header) scroller.appendChild(k);
-      });
-      pane.appendChild(scroller);
-    }
-
-    // Compute max height available under the pane's top
-    const rect = pane.getBoundingClientRect();
-    // Space to keep for bottom shadow/margins
-    const bottomPad = 32;
-    let maxH = window.innerHeight - rect.top - bottomPad;
-    if (maxH < 180) maxH = 180;
-
-    scroller.style.maxHeight = Math.floor(maxH) + 'px';
+  function headerEl(){
+    return document.querySelector('header,[role="banner"],.topbar,.navbar,.app-header,.header');
   }
 
-  function ensureAll(){
-    // Work on all visible pages (tabs)
-    const panes = document.querySelectorAll('.page:not(.hidden)');
-    if (!panes.length) return;
-    panes.forEach(ensureOnePaneScroller);
+  function ensureStickyHeader(h){
+    if (!h) return;
+    h.style.position = 'sticky';
+    h.style.top = '0';
+    h.style.zIndex = '1000';
+    const bg = getComputedStyle(h).backgroundColor;
+    if (!bg || bg === 'rgba(0, 0, 0, 0)') h.style.background = '#0b0b0b';
   }
 
-  // Run now and on layout mutations
-  const kick = ()=>{ try { ensureAll(); } catch(e){} };
-  if (document.readyState==='loading') {
-    document.addEventListener('DOMContentLoaded', kick, {once:true});
-  } else {
-    kick();
-  }
-  window.addEventListener('resize', kick);
-  window.addEventListener('hashchange', kick);
-  new MutationObserver(kick).observe(document.documentElement, {childList:true, subtree:true});
-})();
-
-// --- IOC pane scroller (History / Address / DIONS / Settings) ---
-(() => {
-  if (window.__IOC_PANE_SCROLLERS__) return;  // guard against double-inject
-  window.__IOC_PANE_SCROLLERS__ = true;
-
-  // Light CSS, injected once
-  function ensurePaneScrollCSS() {
-    if (document.getElementById('ioc-pane-scroll-css')) return;
-    const css = document.createElement('style');
-    css.id = 'ioc-pane-scroll-css';
-    css.textContent = `
-      /* only affect our internal wrapper */
-      .pane-scroller {
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-    `;
-    document.head.appendChild(css);
+  function paneEls(){
+    const list = [];
+    PANE_SELECTORS.forEach(sel => document.querySelectorAll(sel).forEach(el => {
+      if (!list.includes(el)) list.push(el);
+    }));
+    return list;
   }
 
-  // Make a single tab's inner content scroll within the window
-  function ensureOneTabScroll(tab) {
-    if (!tab) return;
+  function apply(){
+    const hdr = headerEl();
+    if (hdr) ensureStickyHeader(hdr);
+    const H = hdr ? Math.max(48, Math.ceil(hdr.getBoundingClientRect().height) || 64) : 64;
 
-    // Wrap existing children into a single scrolling container (once).
-    let wrap = tab.querySelector(':scope > .pane-scroller');
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'pane-scroller';
-      // Move all existing children into the wrapper to preserve visuals
-      while (tab.firstChild) wrap.appendChild(tab.firstChild);
-      tab.appendChild(wrap);
-    }
+    // Do NOT disable body scroll globally; just make target panes scrollable.
+    paneEls().forEach(p => {
+      // Only act on visible panes (no display:none)
+      const cs = getComputedStyle(p);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return;
 
-    // Compute available height from the tab's top down to window bottom
-    const top = tab.getBoundingClientRect().top;
-    const pad = 24; // bottom padding so content doesn't touch the edge
-    const avail = Math.max(260, window.innerHeight - top - pad);
-
-    wrap.style.maxHeight = avail + 'px';
-  }
-
-  function ensurePaneScrollers() {
-    ensurePaneScrollCSS();
-    ['tab-history','tab-address','tab-dions','tab-settings'].forEach(id => {
-      const tab = document.getElementById(id);
-      if (tab && !tab.classList.contains('hidden')) {
-        ensureOneTabScroll(tab);
-      }
+      // Make the pane itself the scroll container
+      p.style.overflowY = 'auto';
+      p.style.overflowX = 'hidden';
+      p.style.webkitOverflowScrolling = 'touch';
+      p.style.maxHeight = `calc(100vh - ${H}px)`;
+      p.style.height = `calc(100vh - ${H}px)`;
+      p.style.boxSizing = 'border-box';
     });
   }
 
-  // Run on load and whenever layout can change
-  const kick = () => { try { ensurePaneScrollers(); } catch(_){} };
-  document.addEventListener('DOMContentLoaded', kick, { once: true });
-  window.addEventListener('resize', kick);
-  window.addEventListener('hashchange', kick);
-  new MutationObserver(kick).observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+  const run = () => { try { apply(); } catch(e){} };
 
-  // Also kick after a short delay in case tabs mount late
-  setTimeout(kick, 200);
-  setTimeout(kick, 600);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, { once:true });
+  } else {
+    run();
+  }
+  window.addEventListener('resize', run);
+  window.addEventListener('hashchange', run);
+  new MutationObserver(() => run()).observe(document.documentElement, {subtree:true, childList:true});
 })();

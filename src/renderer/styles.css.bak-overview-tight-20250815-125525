@@ -193,29 +193,3 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 #overview .total-io-hero + * {
   margin-top: 16px; /* breathing room above sync info */
 }
-
-/* === Overview: keep big balance from pushing sync bar off-screen === */
-#overview .io-amount,
-#overview .total-io-hero .io-amount,
-#overview .total-io-hero h1,
-#overview .balance-hero h1,
-#overview .balance h1,
-#overview .hero h1 {
-  font-size: clamp(44px, 6.5vw, 96px); /* smaller max than before */
-  line-height: 0.9;
-  margin-bottom: 10px;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-#overview .total-io-hero,
-#overview .balance-hero,
-#overview .hero {
-  padding-top: 14px;
-  padding-bottom: 14px; /* reduce vertical bulk so sync row breathes */
-}
-
-#overview .pane-body {
-  overflow: auto;
-  min-height: 0; /* allow content to shrink within pane */
-}

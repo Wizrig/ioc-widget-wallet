@@ -2272,61 +2272,60 @@ async function loadHistory() {
   try { tag(); } catch(e){}
 })();
 
-/* __BALANCE_FONT_LOCK__ */
-(function lockBalanceFont(){
-  // 1) Inject a scoped CSS block for the big balance
-  const cssId = 'balance-font-lock-style';
-  if (!document.getElementById(cssId)) {
-    const style = document.createElement('style');
-    style.id = cssId;
-    style.textContent = `
-      .balance-font-lock {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-                      "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif !important;
-        font-weight: 700 !important;
-        font-variant-numeric: tabular-nums lining-nums;
-        font-feature-settings: "tnum" 1, "lnum" 1;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-    `;
-    document.head.appendChild(style);
-  }
 
-  // 2) Find the big balance element safely and tag it.
-  //    Try common selectors first; fall back to a heuristic (largest number-like block on Overview).
-  function mark() {
-    const candidates = document.querySelectorAll(
-      '.hero-amount, .big-amount, .balance-amount, #balance, #balance-amount'
-    );
-    let el = candidates[0];
+/* __HERO_FOOTER_FIX__ */
+(function heroFooterFix(){
+  // Inject CSS at runtime so we don't depend on any specific stylesheet.
+  const css = `
+/* reserve height for the large balance number so it never pushes the footer */
+#balanceHero{
+  display:block;
+  line-height:1.0;
+  min-height:8.25rem; /* fits e.g., "1,999,999.999" at current design scale */
+}
 
-    if (!el) {
-      // Heuristic: look for a large text node of digits/commas/periods inside the main overview card
-      const overview = document.querySelector('#tab-overview, .tab-overview, [data-tab="overview"]') || document;
-      const all = overview.querySelectorAll('*');
-      let best = null, bestScore = 0;
-      all.forEach(n => {
-        if (!n.childElementCount && n.textContent && /[0-9][0-9,.\s]+/.test(n.textContent)) {
-          const rect = n.getBoundingClientRect();
-          const score = Math.round((rect.width * rect.height) / 1000); // rough size heuristic
-          if (score > bestScore) { bestScore = score; best = n; }
-        }
-      });
-      el = best || null;
+/* give the main scroll area breathing room so the sync line never gets clipped */
+.main-scroll, .content-scroll, .pane-scroll, .tab-scroll, .app-scroll, .scroll-area {
+  padding-bottom:56px;
+}
+
+/* ensure the syncing footer sits above content rather than overlapping */
+.sync-line, .sync-footer, #syncFooter{
+  position:relative; z-index:1;
+}
+  `.trim();
+
+  function addStyleOnce(id, rules){
+    if (!document.getElementById(id)) {
+      const s = document.createElement('style');
+      s.id = id;
+      s.textContent = rules;
+      document.head.appendChild(s);
     }
-
-    if (el) el.classList.add('balance-font-lock');
   }
 
-  // Run ASAP and after potential re-renders
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mark, { once: true });
-  } else {
-    mark();
+  // Tag the big balance number with a stable id so CSS can target it.
+  function tagHero(){
+    if (document.getElementById('balanceHero')) return;
+    const root = document.querySelector('#overview,[data-pane="overview"],.tab-content-overview') || document.body;
+    let best=null, bestFs=0;
+    root.querySelectorAll('*').forEach(el=>{
+      const t=(el.textContent||'').trim();
+      if (!/[0-9][0-9,]*\.[0-9]{3}$/.test(t)) return; // looks like 1,902,315.961
+      const fs=parseFloat(getComputedStyle(el).fontSize)||0;
+      if (fs>bestFs){ best=el; bestFs=fs; }
+    });
+    if (best) best.id='balanceHero';
   }
-  // Also re-apply occasionally while syncing so live updates keep the lock
-  const interval = setInterval(mark, 2000);
-  window.addEventListener('beforeunload', () => clearInterval(interval));
+
+  function run(){
+    addStyleOnce('__hero_footer_style__', css);
+    tagHero();
+  }
+
+  // Initial & on changes (live updates during syncing)
+  document.addEventListener('DOMContentLoaded', run);
+  run();
+  new MutationObserver(run).observe(document.documentElement, {subtree:true,childList:true,characterData:true,attributes:true});
 })();
- /* __BALANCE_FONT_LOCK__ */
+  /* __HERO_FOOTER_FIX__ */

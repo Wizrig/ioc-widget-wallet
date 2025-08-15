@@ -4,24 +4,12 @@ const path = require('path');
 const http = require('http');
 const { ipcMain } = require('electron');
 
-// Cross-platform IOCoin data directory
 function dataDir() {
-  const home = os.homedir();
-  if (process.platform === 'darwin') {
-    return path.join(home, 'Library', 'Application Support', 'IOCoin');
-  }
-  if (process.platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    return path.join(appData, 'IOCoin');
-  }
-  // Fallback for Linux/other
-  return path.join(home, '.iocoin');
+  return path.join(os.homedir(), 'Library', 'Application Support', 'IOCoin');
 }
-
 function confPath() {
   return path.join(dataDir(), 'iocoin.conf');
 }
-
 function readConf() {
   const p = confPath();
   const out = {};
@@ -35,9 +23,8 @@ function readConf() {
   } catch {}
   return out;
 }
-
 function readCookie() {
-  const p = path.join(dataDir(), '.cookie'); // user:token
+  const p = path.join(dataDir(), '.cookie'); // format: user:token
   if (!fs.existsSync(p)) return null;
   try {
     const s = fs.readFileSync(p, 'utf8').trim();
@@ -50,7 +37,7 @@ function readCookie() {
 function candidateTargets() {
   const conf = readConf();
   const host = conf.rpcconnect || '127.0.0.1';
-  const ports = conf.rpcport ? [Number(conf.rpcport)] : [7332, 33765]; // common IOC ports
+  const ports = conf.rpcport ? [Number(conf.rpcport)] : [7332, 33765]; // try common ports
   const authPref = [];
 
   const cookie = readCookie();
@@ -62,8 +49,9 @@ function candidateTargets() {
 
   const out = [];
   for (const port of ports) {
-    if (authPref.length === 0) out.push({ host, port, auth: { type: 'none' } });
-    else for (const auth of authPref) out.push({ host, port, auth });
+    for (const auth of authPref.length ? authPref : [{ type: 'none' }]) {
+      out.push({ host, port, auth });
+    }
   }
   return out;
 }
@@ -102,8 +90,11 @@ async function rpcCall(method, params = []) {
   const targets = candidateTargets();
   let lastErr = null;
   for (const t of targets) {
-    try { return await rpcCallOnce(t, method, params); }
-    catch (e) { lastErr = e; }
+    try {
+      return await rpcCallOnce(t, method, params);
+    } catch (e) {
+      lastErr = e;
+    }
   }
   throw lastErr || new Error('RPC unavailable');
 }
@@ -129,7 +120,7 @@ async function statusSummary() {
   return out;
 }
 
-// Register IPC once
+// Register IPC once (no creds exposed to renderer)
 if (!ipcMain._ioc_rpc_ready) {
   ipcMain._ioc_rpc_ready = true;
   ipcMain.handle('ioc:rpc', async (_e, method, params) => rpcCall(method, params));

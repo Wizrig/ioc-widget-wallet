@@ -2330,23 +2330,3 @@ async function loadHistory() {
   window.addEventListener('beforeunload', () => clearInterval(interval));
 })();
  /* __BALANCE_FONT_LOCK__ */
-
-// ----- injected: bold largest balance text -----
-function __boldBigBalance(){
-  try {
-    const all = Array.from(document.querySelectorAll("body *"));
-    let max = 0, tgt = null;
-    for (const el of all) {
-      const cs = getComputedStyle(el);
-      // ignore invisible/zero-size/controls
-      if (cs.display === "none" || cs.visibility === "hidden") continue;
-      if (!cs.fontSize.endsWith("px")) continue;
-      const fs = parseFloat(cs.fontSize);
-      if (fs > max) { max = fs; tgt = el; }
-    }
-    if (tgt) { tgt.style.fontWeight = "700"; }
-  } catch(e) { /* no-op */ }
-}
-document.addEventListener("DOMContentLoaded", __boldBigBalance);
-new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,{subtree:true,childList:true,characterData:true});
-// ----- end injected -----

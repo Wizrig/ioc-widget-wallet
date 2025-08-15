@@ -50,7 +50,7 @@
       <div class="panel-inner">
         <div class="h3">History</div>
         <table class="tx">
-          <thead><tr><th>When</th><th>Amount</th><th>Address / Txid</th></tr></thead>
+          <thead><tr><th>When</th><th>Type</th><th>Amount</th><th>Address / Txid</th></tr></thead>
           <tbody id="txrows"></tbody>
         </table>
       </div>

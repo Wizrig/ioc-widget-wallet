@@ -2645,32 +2645,3 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 })();
 // ===========================================================================
 
-
-// ===== HIDE_DIONS_V1 (do not remove) =====
-(function hideDions() {
-  function run() {
-    try {
-      document.querySelectorAll('button,a,div,span,li').forEach(el => {
-        const txt = (el.textContent||'').trim();
-        if (txt === 'DIONS') {
-          const container = el.closest('nav,[role="tablist"],.tabs,.pillbar,.toolbar,.nav,.menu') || el;
-          try { container.remove(); } catch { container.style.display='none'; }
-        }
-      });
-      const headers = document.querySelectorAll('h1,h2,h3,.card-title,.pane-title,.section-title,div');
-      headers.forEach(h => {
-        const t = (h.textContent||'').trim();
-        if (t === 'DIONS') {
-          const pane = h.closest('.card,.pane,.panel,.section,.content,.box,div') || h;
-          try { pane.remove(); } catch { pane.style.display='none'; }
-        }
-      });
-    } catch(e) { /* no-op */ }
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => { run(); setTimeout(run,120); setTimeout(run,500); }, { once:true });
-  } else {
-    run(); setTimeout(run,120); setTimeout(run,500);
-  }
-})();
-// ===== /HIDE_DIONS_V1 =====

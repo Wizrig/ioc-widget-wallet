@@ -1,6 +1,6 @@
 try {
   if (!global.__IOC_LOCKED_WINDOW__) {
-    const { app, BrowserWindow , Menu} = require('electron');
+    const { app, BrowserWindow } = require('electron');
     app.on('browser-window-created', (_evt, win) => {
       // Lock size once it has its final dimensions
       win.once('ready-to-show', () => {
@@ -277,20 +277,3 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
   } catch (_) {}
 })();
 // ===== end IPC =====
-
-// ===== IOC_CONTEXT_EDIT_MENU_V2 =====
-const { Menu } = require('electron');
-app.on('browser-window-created', (_e, win) => {
-  win.webContents.on('context-menu', (_evt, params) => {
-    const tpl = [
-      { role: 'cut',   enabled: params.isEditable },
-      { role: 'copy',  enabled: (params.selectionText || '').length > 0 },
-      { role: 'paste', enabled: params.isEditable },
-      { type: 'separator' },
-      { role: 'selectAll', enabled: params.isEditable }
-    ];
-    const menu = Menu.buildFromTemplate(tpl);
-    menu.popup({ window: win });
-  });
-});
-// ===== /IOC_CONTEXT_EDIT_MENU_V2 =====

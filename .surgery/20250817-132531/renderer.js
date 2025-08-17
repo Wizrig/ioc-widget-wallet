@@ -2645,36 +2645,3 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 })();
 // ===========================================================================
 
-
-// ===== IOC_HIDE_DIONS_V2 =====
-// Hide the "DIONS" nav pill and its pane without touching other tabs.
-(function () {
-  const hideDions = () => {
-    try {
-      // Hide nav button whose visible label is "DIONS"
-      document.querySelectorAll('button, a, div').forEach(el => {
-        if (!el.offsetParent) return;
-        const txt = (el.textContent || '').trim();
-        if (txt === 'DIONS') {
-          el.style.display = 'none';
-        }
-      });
-      // Hide any section/pane with a header titled "DIONS"
-      document.querySelectorAll('h1,h2,h3,h4').forEach(h => {
-        if ((h.textContent || '').trim() === 'DIONS') {
-          const card = h.closest('.card, .pane, section, div');
-          (card || h).style.display = 'none';
-        }
-      });
-      // If panes are routed by id, hide a likely DIONS container
-      const guess = document.querySelector('#dions, #dions-pane, [data-pane="dions"]');
-      if (guess) guess.style.display = 'none';
-    } catch (_) {}
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', hideDions);
-  } else {
-    hideDions();
-  }
-})();
-// ===== /IOC_HIDE_DIONS_V2 =====

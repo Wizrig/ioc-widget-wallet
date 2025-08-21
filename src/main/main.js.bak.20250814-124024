@@ -1,23 +1,3 @@
-try {
-  if (!global.__IOC_LOCKED_WINDOW__) {
-    const { app, BrowserWindow , Menu} = require('electron');
-    app.on('browser-window-created', (_evt, win) => {
-      // Lock size once it has its final dimensions
-      win.once('ready-to-show', () => {
-        try {
-          const [w, h] = win.getSize();
-          win.setResizable(false);
-          win.setMinimumSize(w, h);
-          win.setMaximumSize(w, h);
-        } catch {}
-      });
-    });
-    global.__IOC_LOCKED_WINDOW__ = true;
-  }
-} catch {}
-
-try { require('./ipc-ui'); } catch {}
-try { require('./rpc-compat').init(); } catch {}
 const {app, BrowserWindow, ipcMain} = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -163,11 +143,14 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {x: 14, y: 14},
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      
+      preload: require('path').join(__dirname, '../preload.js'), '../preload.js'),
       sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
+      contextIsolation: false,
+      nodeIntegration: true
+    
     }
+  
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
@@ -278,19 +261,26 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 })();
 // ===== end IPC =====
 
-// ===== IOC_CONTEXT_EDIT_MENU_V2 =====
-const { Menu } = require('electron');
-app.on('browser-window-created', (_e, win) => {
-  win.webContents.on('context-menu', (_evt, params) => {
-    const tpl = [
-      { role: 'cut',   enabled: params.isEditable },
-      { role: 'copy',  enabled: (params.selectionText || '').length > 0 },
-      { role: 'paste', enabled: params.isEditable },
-      { type: 'separator' },
-      { role: 'selectAll', enabled: params.isEditable }
-    ];
-    const menu = Menu.buildFromTemplate(tpl);
-    menu.popup({ window: win });
+
+
+// [wallet-backup-ipc-begin]
+try {
+  const { dialog, ipcMain } = require('electron');
+  const fs = require('fs');
+  const p = require('path');
+  const os = require('os');
+  if (ipcMain && ipcMain.removeHandler) ipcMain.removeHandler('backup-wallet');
+  ipcMain.handle('backup-wallet', async () => {
+    const walletPath = p.join(os.homedir(), 'Library', 'Application Support', 'IOCoin', 'wallet.dat');
+    if (!fs.existsSync(walletPath)) return { success: false, error: 'wallet.dat not found' };
+    const r = await dialog.showSaveDialog({
+      title: 'Save Wallet Backup',
+      defaultPath: p.join(os.homedir(), 'wallet-backup.dat'),
+      filters: [{ name: 'Wallet Files', extensions: ['dat'] }]
+    });
+    if (r.canceled || !r.filePath) return { success: false, error: 'User canceled' };
+    fs.copyFileSync(walletPath, r.filePath);
+    return { success: true, path: r.filePath };
   });
-});
-// ===== /IOC_CONTEXT_EDIT_MENU_V2 =====
+} catch (e) { console.error('backup-wallet IPC setup failed:', e); }
+// [wallet-backup-ipc-end]

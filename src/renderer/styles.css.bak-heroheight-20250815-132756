@@ -74,30 +74,31 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 
 .wallet-tools { margin-bottom: 20px; }
 
-
 .chrome .chips .chip,
-.chrome .chips .chip.ok{border:none !important;outline:none !important;box-shadow:none !important;background:transparent;}
+.chrome .chips .chip.ok {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
 .chrome .chips .chip::before,
-.chrome .chips .chip::after{content:none !important;border:0 !important;box-shadow:none !important;outline:0 !important;}
-
-
-
-.chrome .chips .chip{border:none!important;outline:none!important;box-shadow:none!important;background:transparent;}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important;border:0!important;box-shadow:none!important;outline:0!important}
-
-.chrome .chips .chip svg{width:22px;height:22px;display:block}
-.chrome .chips .chip svg path{fill:#d7e0e5}
-.chrome .chips .chip.ok svg path{fill:#18dad0}
-
-
-
-.chrome .chips .chip{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important}
-
-
-
-.chrome .chips .chip{border:0!important;outline:0!important;box-shadow:none!important;background:transparent}
-.chrome .chips .chip::before,.chrome .chips .chip::after{content:none!important}
+.chrome .chips .chip::after {
+  content: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+.chrome .chips .chip svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.chrome .chips .chip svg path {
+  fill: #d7e0e5;
+}
+.chrome .chips .chip.ok svg path {
+  fill: #18dad0;
+}
 
 .chrome{-webkit-app-region:drag}
 .chrome .chip,.chips,.tabs,.tab,button,a,input,textarea,select,label,.page,.panel,.card,.addr-card,.live-tail,pre,code{-webkit-app-region:no-drag}
@@ -140,4 +141,81 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+#tab-history .panel-inner{padding:14px 20px 12px!important;overflow:hidden!important;border-radius:14px}
+#tab-history table{table-layout:fixed;width:100%;border-collapse:separate;border-spacing:0}
+#tab-history thead th,#tab-history tbody td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 10px;line-height:1.14}
+#tab-history thead th:nth-child(1),#tab-history tbody td:nth-child(1){width:22%}
+#tab-history thead th:nth-child(2),#tab-history tbody td:nth-child(2){width:16%}
+#tab-history thead th:nth-child(3),#tab-history tbody td:nth-child(3){width:12%}
+#tab-history thead th:nth-child(4),#tab-history tbody td:nth-child(4){width:50%}
+/* Tabs: kill old teal fill and use the theme accent for active/hover */
+.tabs .tab,
+.tab {
+  background-image: none !important;
+}
+
+.tabs .tab:hover,
+.tab:hover {
+  border-color: var(--accent, var(--accent-color, #2da1dd)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--accent-color, #2da1dd)) 35%, transparent) !important;
+}
+
+.tabs .tab.active,
+.tab.active,
+.tabs .tab[aria-selected="true"],
+.tab[aria-selected="true"] {
+  background: var(--accent, var(--accent-color, #2da1dd)) !important;
+  border-color: var(--accent, var(--accent-color, #2da1dd)) !important;
+  color: #0b171a !important;
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent, var(--accent-color, #2da1dd)) 35%, transparent) !important;
+  background-image: none !important;
+}
+
+/* === Fix: Limit Overview big number so sync bar stays visible === */
+#overview .total-io-hero {
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+#overview .total-io-hero .io-amount {
+  font-size: clamp(56px, 8vw, 120px); /* responsive, max 120px */
+  line-height: 0.9;
+  word-break: break-word;
+}
+
+#overview .pane-body {
+  overflow: auto;
+  min-height: 0; /* allow flex child to shrink */
+}
+
+#overview .total-io-hero + * {
+  margin-top: 16px; /* breathing room above sync info */
+}
+
+/* === Overview: keep big balance from pushing sync bar off-screen === */
+#overview .io-amount,
+#overview .total-io-hero .io-amount,
+#overview .total-io-hero h1,
+#overview .balance-hero h1,
+#overview .balance h1,
+#overview .hero h1 {
+  font-size: clamp(44px, 6.5vw, 96px); /* smaller max than before */
+  line-height: 0.9;
+  margin-bottom: 10px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+#overview .total-io-hero,
+#overview .balance-hero,
+#overview .hero {
+  padding-top: 14px;
+  padding-bottom: 14px; /* reduce vertical bulk so sync row breathes */
+}
+
+#overview .pane-body {
+  overflow: auto;
+  min-height: 0; /* allow content to shrink within pane */
 }

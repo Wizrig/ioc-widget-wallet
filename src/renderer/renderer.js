@@ -2881,3 +2881,108 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
   }
   new MutationObserver(sync).observe(document.documentElement, {childList:true, subtree:true});
 })();
+
+// [__IOC_THEME_FILL_MATCH_TOOLS_STRICT__]
+// Make Theme's inner well a single FILLED block identical to Wallet Tools.
+// - Finds cards by heading text ("Wallet Tools" / "Theme") or common classes
+// - Copies computed styles from Tools' inner well to Theme's innermost well
+// - Neutralizes any middle wrapper that causes a hollow/inset look
+(function(){
+  if (window.__IOC_THEME_FILL_MATCH_TOOLS_STRICT__) return;
+  window.__IOC_THEME_FILL_MATCH_TOOLS_STRICT__ = true;
+
+  function lower(n){ return (n && n.textContent || '').trim().toLowerCase(); }
+  function byHeading(root, name){
+    const hs = root.querySelectorAll('h1,h2,h3,h4,.card-title');
+    name = (name||'').toLowerCase();
+    for (const h of hs){ if (lower(h) === name) return h.closest('.card,.panel,.section,.pane,div'); }
+    return null;
+  }
+  function getTools(root){
+    return root.querySelector('.wallet-tools,.tools-card,#walletTools,[data-section="wallet-tools"]')
+        || byHeading(root,'wallet tools');
+  }
+  function getTheme(root){
+    return root.querySelector('.theme-card,#themeBlock,.theme,[data-section="theme"]')
+        || byHeading(root,'theme');
+  }
+  function firstInner(el){
+    // Prefer named inner wells; else use first element child
+    return el && ( el.querySelector('.tools-inner,.theme-inner,.card-body,.inner,.well') || el.firstElementChild );
+  }
+  function deepest(el){
+    // Walk down single-child chains to the deepest content box (buttons live here)
+    let cur = el;
+    while (cur && cur.firstElementChild && cur.children.length === 1) cur = cur.firstElementChild;
+    return cur || el;
+  }
+  function copyStyles(from, to){
+    const cs = getComputedStyle(from);
+    to.style.backgroundColor = cs.backgroundColor;
+    to.style.borderRadius    = cs.borderRadius;
+    to.style.padding         = cs.padding;
+    to.style.boxShadow       = cs.boxShadow;
+    to.style.border          = cs.border;
+    to.style.width           = '100%';
+    to.style.display         = 'block';
+    to.style.margin          = '0';
+  }
+  function neutralizeMiddle(theme, innerFilled){
+    // Any ancestors between theme and innerFilled should not draw a ring
+    let p = innerFilled.parentElement;
+    while (p && p !== theme){
+      p.style.background   = 'transparent';
+      p.style.boxShadow    = 'none';
+      p.style.border       = '0';
+      p.style.padding      = '0';
+      p.style.margin       = '0';
+      p = p.parentElement;
+    }
+  }
+  function moveButtonsInside(inner){
+    const buttonsRow = inner.querySelector('.btn-row,.actions,.buttons') ||
+                       inner.querySelector('button')?.parentElement;
+    if (!buttonsRow) return;
+    // Ensure spacing like Tools (centered w/ gap)
+    const s = buttonsRow.style;
+    s.display        = 'flex';
+    s.justifyContent = 'center';
+    s.alignItems     = 'center';
+    if (!s.gap) s.gap = '18px';
+    if (!s.marginTop) s.marginTop = '16px';
+  }
+
+  function sync(){
+    const root  = document;
+    const tools = getTools(root);
+    const theme = getTheme(root);
+    if (!tools || !theme) return;
+
+    const toolsInner = deepest(firstInner(tools)) || tools;
+    // For Theme: use deepest existing inner; if not present, wrap content
+    let themeInner = deepest(firstInner(theme));
+    if (!themeInner || themeInner === theme){
+      const wrap = document.createElement('div');
+      wrap.className = 'theme-inner';
+      const keep = [];
+      for (const ch of Array.from(theme.childNodes)){
+        if (!(ch.matches && ch.matches('h1,h2,h3,.card-title'))) keep.push(ch);
+      }
+      keep.forEach(n => wrap.appendChild(n));
+      theme.appendChild(wrap);
+      themeInner = wrap;
+    }
+
+    copyStyles(toolsInner, themeInner);
+    neutralizeMiddle(theme, themeInner);
+    moveButtonsInside(themeInner);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sync, {once:true});
+  } else {
+    sync();
+  }
+  new MutationObserver(sync).observe(document.documentElement, {childList:true, subtree:true});
+  window.addEventListener('hashchange', sync, false);
+})();

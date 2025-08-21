@@ -8,11 +8,3 @@ contextBridge.exposeInMainWorld('ioc', {
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();
-(()=>{try{
-  const { contextBridge, ipcRenderer } = require('electron');
-  if (!globalThis.__iocAnyInvoke) {
-    contextBridge.exposeInMainWorld('api', { invoke: (ch, ...args) => ipcRenderer.invoke(ch, ...args) });
-    contextBridge.exposeInMainWorld('electron', { ipcRenderer: { invoke: (...a) => ipcRenderer.invoke(...a) } });
-    globalThis.__iocAnyInvoke = true;
-  }
-}catch(_){}})();

@@ -2618,10 +2618,24 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 
     // If there was a free-floating Theme label/row, hide its original wrapper
     // to avoid duplicate UI (best-effort; safe to ignore if not found).
+    
     if (themeTitle) {
-      const wrap = themeTitle.closest('div');
-      if (wrap && wrap !== card && !wrap.contains(card)) wrap.style.display = 'none';
+      // Find the card/panel container that originally held Theme
+      let wrap = themeTitle.closest(".panel, .card, .section, .pane, div");
+      if (wrap && wrap !== card && !wrap.contains(card)) {
+        const container = wrap.closest(".panel, .card, .section, .pane") || wrap;
+        // Remove the whole empty container (not just its inner div)
+        if (container.remove) { container.remove(); } else { container.style.display = "none"; }
+        // Also remove an immediately previous empty card/panel that might be acting as a spacer
+        const prev = container.previousElementSibling;
+        const isCardLike = p => p && p.classList && /(?:panel|card|section|pane)/.test(p.className);
+        const isEmpty    = p => p && !(p.querySelector("button,input,select,textarea")) && ((p.textContent||"").trim().length === 0);
+        if (isCardLike(prev) && isEmpty(prev)) {
+          if (prev.remove) { prev.remove(); } else { prev.parentNode && prev.parentNode.removeChild(prev); }
+        }
+      }
     }
+  
   }
 
   // Run once at load, and again when Settings becomes visible (cheap observer)

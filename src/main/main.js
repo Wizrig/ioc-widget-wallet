@@ -1,3 +1,4 @@
+const LogFeed=require('./tools/log-feed');
 try {
   if (!global.__IOC_LOCKED_WINDOW__) {
     const { app, BrowserWindow , Menu} = require('electron');
@@ -169,6 +170,8 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+try{ LogFeed.attach(mainWindow||win||browserWindow) }catch(e){}
+
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 

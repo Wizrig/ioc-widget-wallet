@@ -75,35 +75,62 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {
-  const [info, bc, stake, peers, lockst] = await Promise.all([
-    safeRpc('getinfo', [], {}) || {},
-    (async () => {
-      const bi = await safeRpc('getblockchaininfo', [], null);
-      if (bi) return bi;
-      const blocks = await safeRpc('getblockcount', [], 0);
-      return {blocks, headers: blocks, verificationprogress: blocks ? 1 : 0};
-    })(),
-    safeRpc('getstakinginfo', [], {}) || {},
-    safeRpc('getconnectioncount', [], 0),
-    (async () => (await safeRpc('walletlockstatus', [], null)) || {})()
-  ]);
-  return { info, chain: bc, peers, staking: stake, lockst };
-}
+  const now = Date.now();
 
+  // ---- SLOW wallet cache (15s) ----
+  if (!global.__iocWalletCache) global.__iocWalletCache = { ts: 0, data: { info: {}, staking: {}, lockst: {} } };
+  const wc = global.__iocWalletCache;
+  const walletFresh = wc.data && (now - wc.ts) < 15000;
+
+  const walletPromise = walletFresh ? Promise.resolve(wc.data) : (async () => {
+    const [info, stake, lockst] = await Promise.all([
+      safeRpc('getinfo', [], {}) || {},
+      safeRpc('getstakinginfo', [], {}) || {},
+      (async () => (await safeRpc('walletlockstatus', [], null)) || {})()
+    ]);
+    const data = { info, staking: stake, lockst };
+    wc.data = data;
+    wc.ts = Date.now();
+    return data;
+  })();
+
+  // ---- FAST chain+peers (every status call) ----
+  const chainPromise = (async () => {
+    const bi = await safeRpc('getblockchaininfo', [], null);
+    if (bi) return bi;
+    const blocks = await safeRpc('getblockcount', [], 0);
+    return { blocks, headers: blocks, verificationprogress: blocks ? 1 : 0 };
+  })();
+
+  const peersPromise = safeRpc('getconnectioncount', [], 0);
+
+  const [wallet, chain, peers] = await Promise.all([walletPromise, chainPromise, peersPromise]);
+  return { info: wallet.info, chain, peers, staking: wallet.staking, lockst: wallet.lockst };
+}
 ipcMain.handle('ioc/status', async () => {
   const now = Date.now();
   if (statusCache.inflight) {
-    // Another caller already kicked off collection — piggyback on it.
+    console.log('[ioc/status] Coalescing request (in-flight)');
     return await statusCache.inflight;
   }
-  if (statusCache.data && (now - statusCache.ts) < 1000) {
+  if (statusCache.data && (now - statusCache.ts) < 3000) {
+    console.log(`[ioc/status] Serving from cache (age: ${now - statusCache.ts}ms)`);
     return statusCache.data; // fresh enough (<=1s old)
   }
+  const startTime = Date.now();
+  console.log('[ioc/status] Starting new RPC batch');
   statusCache.inflight = computeStatus()
     .then(data => {
+      const elapsed = Date.now() - startTime;
+      console.log(`[ioc/status] RPC batch completed in ${elapsed}ms`);
       statusCache.data = data;
       statusCache.ts = Date.now();
       return data;
+    })
+    .catch(err => {
+      const elapsed = Date.now() - startTime;
+      console.error(`[ioc/status] RPC batch failed after ${elapsed}ms:`, err && err.message ? err.message : err);
+      throw err;
     })
     .finally(() => { statusCache.inflight = null; });
   return await statusCache.inflight;

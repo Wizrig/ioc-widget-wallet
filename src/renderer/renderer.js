@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 let state = { unlocked: false, peers: 0 };
 let refreshing = false;
 let nextTimer = null;
-let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0 };
+let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
 
 function setSync(pct, text) {
   const bar = $('syncbar'); if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
@@ -51,10 +51,22 @@ function scheduleRefresh(ms) {
 }
 
 async function refresh() {
-  if (refreshing) return; // prevent overlap
+  if (refreshing) {
+    console.warn('[refresh] Already in progress, skipping');
+    return;
+  }
   refreshing = true;
+  const startTime = Date.now();
+  let timedOut = false;
   try {
-    const st = await window.ioc.status();
+    console.log('[refresh] Starting status fetch');
+    const statusPromise = window.ioc.status();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('IPC timeout after 8000ms')), 8000)
+    );
+    const st = await Promise.race([statusPromise, timeoutPromise]);
+    const elapsed = Date.now() - startTime;
+    console.log(`[refresh] Completed in ${elapsed}ms`);
     const info = st?.info || {};
     const bal = Number(info.balance || info.walletbalance || 0);
 
@@ -68,9 +80,11 @@ async function refresh() {
     const headers = st?.chain?.headers || blocks || 0;
     const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : (headers ? blocks / headers : 0);
     const pct = Math.round((vp || 0) * 100);
-    if (last.vp !== vp) {
+    if (last.vp !== vp || last.blocks !== blocks || last.headers !== headers) {
       setSync(pct, `Syncing wallet (${blocks} / ${headers} blocks)`);
       last.vp = vp;
+      last.blocks = blocks;
+      last.headers = headers;
     }
 
     setPeers(st?.peers || 0);
@@ -91,14 +105,26 @@ async function refresh() {
       setStaking(stakingOn, stakingAmt);
       last.stakeOn = stakingOn; last.stakeAmt = stakingAmt;
     }
-  } catch {}
+  } catch (err) {
+    const elapsed = Date.now() - startTime;
+    if (err && err.message && err.message.includes('timeout')) {
+      timedOut = true;
+      console.error(`[refresh] Timed out after ${elapsed}ms`);
+    } else {
+      console.error(`[refresh] Failed after ${elapsed}ms:`, (err && err.message) ? err.message : err);
+    }
+  }
   finally {
     refreshing = false;
     // Adaptive polling: faster while syncing, slower when synced; extra-slow when tab/window hidden
     const isHidden = document.hidden;
     const vp = last.vp || 0;
     const base = vp < 0.999 ? 1500 : 4000;
-    const delay = isHidden ? Math.max(base, 10000) : base;
+    let delay = isHidden ? Math.max(base, 10000) : base;
+    if (timedOut) {
+      delay = Math.max(delay, 6000);
+    }
+    console.log(`[refresh] Next refresh in ${delay}ms (vp=${vp.toFixed(3)}, hidden=${isHidden}, timedOut=${timedOut})`);
     scheduleRefresh(delay);
   }
 }
@@ -336,29 +362,7 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 /* END_IOC_WIDGET_TOOLS_MODAL_HOOK */
 
-;(()=>{let __lastBeat=Date.now();const __kick=()=>{try{refresh();}catch(e){}};const __mark=()=>{__lastBeat=Date.now()};document.addEventListener('click',()=>{setTimeout(__kick,0)},true);const __hb=setInterval(()=>{if(Date.now()-__lastBeat>6000){__kick()}},3000);const __orig_refresh=refresh;refresh=async function(){try{await __orig_refresh()}finally{__mark()}}})();
-
-;(()=>{if(window.__iocSyncHB)return;window.__iocSyncHB=true;setInterval(()=>{try{if(!document.hidden)refresh();}catch(e){}},4000);window.addEventListener('focus',()=>{try{refresh();}catch(e){}});})();
-;(()=>{if(window.__SYNC_WATCHDOG)return;window.__SYNC_WATCHDOG=true;let __lastSyncTs=0;const __mark=()=>{__lastSyncTs=Date.now()};const __kick=()=>{try{refresh()}catch(e){}};const __wd=()=>{if(Date.now()-__lastSyncTs>5000){__kick()}};setInterval(__wd,2500);document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.tab');if(t){setTimeout(__kick,0)}},true);const _r=refresh;refresh=async function(){try{return await _r.apply(this,arguments)}finally{__mark()}}})();
-;(()=>{ if (window.__SYNC_TICK) return; window.__SYNC_TICK = true;
-  const kick = ()=>{ try { if (typeof refresh==='function') refresh(); } catch(e){} };
-  setInterval(kick, 2500);
-  window.addEventListener('focus', kick, {once:false});
-  document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) kick(); }, true);
-})();
-;(()=>{if(window.__SYNC_PINGER)return;window.__SYNC_PINGER=true;
-const kick=()=>{try{if(typeof refresh==='function'){refresh();return}}catch(e){}try{
-  const tab=document.querySelector('.tab[aria-selected="true"]');
-  if(tab && /overview/i.test(tab.textContent||'')) tab.click();
-}catch(e){}};
-setInterval(kick,3000);window.addEventListener('focus',kick);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)kick();},true);
-})();
-;(()=>{if(window.__SYNC_RPC__)return;window.__SYNC_RPC__=true;
-const rpc=(n,a=[])=>new Promise(res=>{let done=false;const to=setTimeout(()=>{if(!done){done=true;res(null)}},3000);try{const f=(window.ioc&&typeof window.ioc.rpc==='function')?window.ioc.rpc(n,a):null;if(!f){clearTimeout(to);return res(null)}f.then(v=>{if(!done){done=true;clearTimeout(to);res(v)}}).catch(()=>{if(!done){done=true;clearTimeout(to);res(null)}})}catch(e){clearTimeout(to);res(null)}});
-const tick=async()=>{const local=await rpc('getblockcount');let net=await rpc('getnumblocksofpeers');if(!(net>0)){const mi=await rpc('getmininginfo');if(mi&&mi.blocks)net=mi.blocks}if(!(net>=0))net=0;if(!(local>=0))net=local||0;if(net<local)net=local;const pct=net?Math.round((local/net)*100):0;if(typeof setSync==='function'){setSync(pct,`Syncing wallet (${local||0} / ${net||0} blocks)`)}else{const t=document.getElementById('syncText');if(t)t.textContent=`Syncing wallet (${local||0} / ${net||0} blocks)`;const b=document.getElementById('syncbar');if(b)b.style.width=(pct||0)+'%'}};
-setInterval(tick,3000);window.addEventListener('focus',()=>{setTimeout(tick,0)});document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});setTimeout(tick,200);
-})();function __ensureHistoryScroller(){
+function __ensureHistoryScroller(){
   const pane = document.querySelector('#history-pane');
   if(!pane) return;
   let scroller = pane.querySelector('.history-scroller');

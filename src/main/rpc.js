@@ -8,10 +8,25 @@ function readCreds() {
   return { u, p };
 }
 async function rpc(method, params=[]) {
+  const startTime = Date.now();
+  console.log(`[RPC] ${method} starting`);
+  try {
   const { u, p } = readCreds();
-  const { data } = await axios.post('http://127.0.0.1:33765/', { jsonrpc:'2.0', id:1, method, params }, { auth:{ username:u, password:p }, timeout:10000 });
+  const { data } = await axios.post('http://127.0.0.1:33765/', { jsonrpc:'2.0', id:1, method, params }, { auth:{ username:u, password:p }, timeout:20000 });
+  const elapsed = Date.now() - startTime;
+  if (elapsed > 5000) {
+    console.warn(`[RPC] ${method} SLOW: ${elapsed}ms`);
+  } else {
+    console.log(`[RPC] ${method} completed in ${elapsed}ms`);
+  }
   if (data.error) throw new Error(data.error.message || 'RPC error');
   return data.result;
+  } catch (err) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[RPC] ${method} failed after ${elapsed}ms:`, err && err.message ? err.message : err);
+    throw err;
+  }
+
 }
 const getBlockCount      = () => rpc('getblockcount');
 const getConnectionCount = () => rpc('getconnectioncount');

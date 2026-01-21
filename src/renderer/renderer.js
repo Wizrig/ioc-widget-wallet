@@ -153,7 +153,10 @@ async function loadHistory_OLD() {
   const rows = await window.ioc.listTx(50);
   const tbody = $('txrows'); if (!tbody) return;
   tbody.innerHTML = '';
-  rows.forEach(t => {
+
+  const reversed = rows.slice().reverse();
+
+  reversed.forEach(t => {
     const tr = document.createElement('tr');
     const when = new Date((t.timereceived || t.time || 0) * 1000).toLocaleString();
     tr.innerHTML = `<td class="col-when">${when}</td><td class="col-amt">${t.amount || 0}</td><td class="col-addr">${t.address || t.txid || ""}</td>`;
@@ -780,7 +783,10 @@ async function loadHistory() {
     if (!tbody) return;
 
     tbody.innerHTML = '';
-    rows.forEach(t => {
+
+    // Newest-first (sort by timereceived/time descending)
+    const sorted = (rows || []).slice().sort((a, b) => ((b.timereceived ?? b.time) || 0) - ((a.timereceived ?? a.time) || 0));
+    sorted.forEach(t => {
       const tr = document.createElement('tr');
       const when = new Date(((t.timereceived ?? t.time) || 0) * 1000).toLocaleString();
       const amt  = Number(t.amount || 0);

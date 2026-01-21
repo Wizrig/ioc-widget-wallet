@@ -6,10 +6,30 @@ let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
 
 function setSync(pct, text) {
-  const bar = $('syncbar'); if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
-  const t = $('syncText'); if (t) t.textContent = text || '';
-  const syncChip = $('ic-sync'); if (syncChip) syncChip.classList.toggle('ok', (pct || 0) >= 100);
+  const bar = $('syncbar');
+  if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+
+  const t = $('syncText');
+  const wrap = document.querySelector('#tab-overview .sync-wrap');
+
+  // Hide sync bar when fully synced, keep block counts in the text
+  if ((pct || 0) >= 100) {
+    if (bar) bar.style.display = 'none';
+    if (t) {
+      const syncedText = (text || '').trim().replace(/^Syncing wallet/i, 'Synced');
+      t.textContent = syncedText || 'OK Synced';
+    }
+    if (wrap) wrap.classList.add('synced');
+  } else {
+    if (bar) bar.style.display = '';
+    if (t) t.textContent = text || '';
+    if (wrap) wrap.classList.remove('synced');
+  }
+
+  const syncChip = $('ic-sync');
+  if (syncChip) syncChip.classList.toggle('ok', (pct || 0) >= 100);
 }
+
 
 function setPeers(n) {
   state.peers = n || 0;

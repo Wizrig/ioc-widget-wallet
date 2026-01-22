@@ -172,50 +172,39 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   background-image: none !important;
 }
 
-/* === Fix: Limit Overview big number so sync bar stays visible === */
-#overview .total-io-hero {
-  display: grid;
-  place-items: center;
-  padding: 20px;
+/* =========================
+   Overview fit + no inner scroll
+   REAL target: #tab-overview
+   ========================= */
+
+/* Neutralize any JS scroll-manager classes if they get applied to Overview */
+#tab-overview,
+#tab-overview.__ioc-content,
+#tab-overview.__ioc-pane,
+#tab-overview.__ioc_scroll_region__ {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
-#overview .total-io-hero .io-amount {
-  font-size: clamp(56px, 8vw, 120px); /* responsive, max 120px */
-  line-height: 0.9;
-  word-break: break-word;
-}
+/* Reduce vertical bulk so sync line/bar stay visible in 600x525 window */
+#tab-overview.page { padding-top: 12px !important; padding-bottom: 12px !important; }
+#tab-overview .panel { padding: 12px !important; }
+#tab-overview .panel-inner { padding: 18px 24px !important; }
+#tab-overview #bignum { margin: 8px auto !important; padding: 18px !important; }
+#tab-overview .stake-line { margin-top: 10px !important; }
+#tab-overview .cta { margin-top: 12px !important; }
+#tab-overview .sync-wrap { padding: 8px 4px !important; margin-top: 10px !important; }
 
-#overview .pane-body {
-  overflow: auto;
-  min-height: 0; /* allow flex child to shrink */
-}
-
-#overview .total-io-hero + * {
-  margin-top: 16px; /* breathing room above sync info */
-}
-
-/* === Overview: keep big balance from pushing sync bar off-screen === */
-#overview .io-amount,
-#overview .total-io-hero .io-amount,
-#overview .total-io-hero h1,
-#overview .balance-hero h1,
-#overview .balance h1,
-#overview .hero h1 {
-  font-size: clamp(44px, 6.5vw, 96px); /* smaller max than before */
-  line-height: 0.9;
-  margin-bottom: 10px;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-#overview .total-io-hero,
-#overview .balance-hero,
-#overview .hero {
-  padding-top: 14px;
-  padding-bottom: 14px; /* reduce vertical bulk so sync row breathes */
-}
-
-#overview .pane-body {
-  overflow: auto;
-  min-height: 0; /* allow content to shrink within pane */
+/* Dark scrollbars (prevents white scrollbar look) */
+#tab-overview * { scrollbar-color: #2b3a44 #0f171c; }
+#tab-overview::-webkit-scrollbar,
+#tab-overview *::-webkit-scrollbar { width: 10px; height: 10px; }
+#tab-overview::-webkit-scrollbar-track,
+#tab-overview *::-webkit-scrollbar-track { background: #0f171c; }
+#tab-overview::-webkit-scrollbar-thumb,
+#tab-overview *::-webkit-scrollbar-thumb {
+  background: #2b3a44;
+  border-radius: 10px;
+  border: 2px solid #0f171c;
 }

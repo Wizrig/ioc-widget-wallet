@@ -542,7 +542,6 @@ svg [data-accent="stroke"]{stroke:var(--accent) !important}
   function init(){
     ensureStyle();
     var saved = getAccent(); if(saved) setAccent(saved);
-    injectSettings();
   }
 
   if(document.readyState==='loading'){

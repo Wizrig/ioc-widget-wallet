@@ -58,9 +58,16 @@ let __resizeRAF=null;
 function fitBalance() {
   const box = $('bignum'), span = $('big-balance');
   if (!box || !span) return;
+  // Guard: don't run if Overview tab is hidden or not properly laid out
+  const overview = $('tab-overview');
+  if (!overview || overview.classList.contains('hidden')) return;
+  if (span.offsetParent === null) return; // not visible
+  const boxWidth = box.clientWidth;
+  if (!boxWidth || boxWidth < 100) return; // layout not settled
+
   const ctx = document.createElement('canvas').getContext('2d');
   const font = s => `800 ${s}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-  let size = 72, max = box.clientWidth - 30;
+  let size = 72, max = boxWidth - 30;
   while (size > 36) { ctx.font = font(size); if (ctx.measureText(span.textContent).width <= max) break; size -= 2; }
   span.style.fontSize = size + 'px';
 }
@@ -184,6 +191,10 @@ function switchTab(name) {
   document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
   if (name === 'history') loadHistory();
   if (name === 'address') loadAddrs();
+  // Re-fit balance after switching to Overview (double RAF ensures layout is settled)
+  if (name === 'overview') {
+    requestAnimationFrame(() => requestAnimationFrame(() => fitBalance()));
+  }
 }
 
 async function doUnlock() {
@@ -1914,10 +1925,18 @@ async function loadHistory() {
 
   function fitTextToBox(el) {
     if (!el) return;
+    // Guard: don't run if Overview tab is hidden or not properly laid out
+    const overview = document.getElementById('tab-overview');
+    if (!overview || overview.classList.contains('hidden')) return;
+    if (el.offsetParent === null) return; // not visible
+
     const container = el.parentElement || el;
-    // We’ll try to fit BOTH width and height within the container
+    // Guard: skip if container not properly sized yet
+    if (!container.clientWidth || container.clientWidth < 100) return;
+
+    // We'll try to fit BOTH width and height within the container
     const maxPx = 84;                 // absolute cap
-    const minPx = 38;                 // don’t get unreadably small
+    const minPx = 38;                 // don't get unreadably small
     const padW = 24;                  // horizontal safety
     const padH = 16;                  // vertical safety
 

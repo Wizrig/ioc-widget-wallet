@@ -237,7 +237,7 @@ async function showExitConfirmation(win) {
     buttons: ['No', 'Yes'],
     defaultId: 1,
     cancelId: 1,
-    message: 'Leave daemon running (recommended)?'
+    message: 'Leave demon running (recommended)?'
   });
   return result.response;
 }
@@ -390,13 +390,6 @@ async function stopDaemonAndQuitHard() {
   console.log('[exit] Exiting Electron...');
   app.exit(0);
 }
-
-ipcMain.handle('ioc:exitConfirmation', async (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return { action: 1 };
-  const response = await showExitConfirmation(win);
-  return { action: response };
-});
 
 ipcMain.handle('ioc:quitApp', async (event, stopDaemon) => {
   exitConfirmed = true;

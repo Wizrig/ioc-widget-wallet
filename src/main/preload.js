@@ -22,8 +22,7 @@ contextBridge.exposeInMainWorld('ioc', {
     ipcRenderer.removeAllListeners('bootstrap:progress');
     ipcRenderer.on('bootstrap:progress', (_ev, progress) => cb(progress));
   },
-  // Exit confirmation and window control
-  exitConfirmation: () => ipcRenderer.invoke('ioc:exitConfirmation'),
+  // Window control
   quitApp: (stopDaemon = true) => ipcRenderer.invoke('ioc:quitApp', stopDaemon),
   hideWindow: () => ipcRenderer.invoke('ioc:hideWindow')
 });

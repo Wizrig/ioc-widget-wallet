@@ -5,6 +5,130 @@ const crypto = require('node:crypto');
 const { app, dialog } = require('electron');
 const { DATA_DIR, CONF_PATH, LAUNCH_AGENT } = require('../shared/constants');
 
+/**
+ * Locate the iocoind binary.
+ * Search order:
+ * 1. Bundled in app resources (if exists)
+ * 2. /usr/local/bin/iocoind
+ * 3. /opt/homebrew/bin/iocoind (Apple Silicon)
+ * 4. Windows Program Files paths
+ * Returns { found: true, path: string } or { found: false, searched: string[] }
+ */
+function findDaemonBinary() {
+  const candidates = [];
+
+  // 1. Check bundled binary in app resources
+  try {
+    const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
+    const bundled = path.join(resourcesPath, 'iocoind');
+    candidates.push(bundled);
+    if (fs.existsSync(bundled)) {
+      return { found: true, path: bundled };
+    }
+  } catch (_) {}
+
+  // 2. Platform-specific system paths
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const unixPaths = [
+      '/usr/local/bin/iocoind',
+      '/opt/homebrew/bin/iocoind',
+      path.join(process.env.HOME || '', 'bin', 'iocoind')
+    ];
+    for (const p of unixPaths) {
+      candidates.push(p);
+      if (fs.existsSync(p)) {
+        return { found: true, path: p };
+      }
+    }
+  } else if (process.platform === 'win32') {
+    const winPaths = [
+      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoind.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoind.exe'),
+      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin HTML5 Wallet', 'iocoind.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin HTML5 Wallet', 'iocoind.exe')
+    ];
+    for (const p of winPaths) {
+      candidates.push(p);
+      if (fs.existsSync(p)) {
+        return { found: true, path: p };
+      }
+    }
+  }
+
+  return { found: false, searched: candidates };
+}
+
+/**
+ * Locate the iocoin-cli binary.
+ * Similar search order to findDaemonBinary.
+ */
+function findCliBinary() {
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  const candidates = [];
+
+  // Check bundled
+  try {
+    const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
+    const bundled = path.join(resourcesPath, 'iocoin-cli' + ext);
+    candidates.push(bundled);
+    if (fs.existsSync(bundled)) {
+      return { found: true, path: bundled };
+    }
+  } catch (_) {}
+
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const unixPaths = [
+      '/usr/local/bin/iocoin-cli',
+      '/opt/homebrew/bin/iocoin-cli'
+    ];
+    for (const p of unixPaths) {
+      candidates.push(p);
+      if (fs.existsSync(p)) {
+        return { found: true, path: p };
+      }
+    }
+  } else if (process.platform === 'win32') {
+    const winPaths = [
+      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoin-cli.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoin-cli.exe')
+    ];
+    for (const p of winPaths) {
+      candidates.push(p);
+      if (fs.existsSync(p)) {
+        return { found: true, path: p };
+      }
+    }
+  }
+
+  return { found: false, searched: candidates };
+}
+
+/**
+ * Check if daemon is currently running by attempting a quick RPC ping.
+ * Returns { running: true } or { running: false, error: string }
+ */
+function isDaemonRunning() {
+  return new Promise((resolve) => {
+    const cli = findCliBinary();
+    if (!cli.found) {
+      resolve({ running: false, error: 'iocoin-cli not found' });
+      return;
+    }
+
+    const child = execFile(cli.path, ['getblockcount', `-datadir=${DATA_DIR}`], { timeout: 3000 }, (err, stdout) => {
+      if (err) {
+        resolve({ running: false, error: err.message || 'daemon not responding' });
+      } else {
+        const count = parseInt((stdout || '').trim(), 10);
+        resolve({ running: true, blockCount: isNaN(count) ? 0 : count });
+      }
+    });
+    child.on('error', (e) => {
+      resolve({ running: false, error: e.message || 'cli exec failed' });
+    });
+  });
+}
+
 function ensureConf() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(CONF_PATH)) {
@@ -79,4 +203,13 @@ function stopViaCli(iocCliPath) {
   });
 }
 
-module.exports = { ensureConf, installLaunchAgent, unloadLaunchAgent, startDetached, stopViaCli };
+module.exports = {
+  ensureConf,
+  installLaunchAgent,
+  unloadLaunchAgent,
+  startDetached,
+  stopViaCli,
+  findDaemonBinary,
+  findCliBinary,
+  isDaemonRunning
+};

@@ -72,6 +72,18 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
   return await safeRpc(method, params, null);
 });
 
+// ===== First-run and data directory IPC handlers =====
+const { DATA_DIR, isFirstRun } = require('../shared/constants');
+
+ipcMain.handle('ioc:getDataDir', async () => {
+  return DATA_DIR;
+});
+
+ipcMain.handle('ioc:isFirstRun', async () => {
+  return isFirstRun();
+});
+// ===== End first-run IPC =====
+
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {

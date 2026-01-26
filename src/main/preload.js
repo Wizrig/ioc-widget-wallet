@@ -4,7 +4,10 @@ contextBridge.exposeInMainWorld('ioc', {
   status: () => ipcRenderer.invoke('ioc/status'),
   listAddrs: () => ipcRenderer.invoke('ioc/listaddrs'),
   listTx: (n=50) => ipcRenderer.invoke('ioc/listtx', n),
-  newAddr: (label='') => ipcRenderer.invoke('ioc/newaddr', label)
+  newAddr: (label='') => ipcRenderer.invoke('ioc/newaddr', label),
+  // First-run and data directory helpers
+  getDataDir: () => ipcRenderer.invoke('ioc:getDataDir'),
+  isFirstRun: () => ipcRenderer.invoke('ioc:isFirstRun')
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();

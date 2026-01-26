@@ -74,6 +74,7 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
+const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, startDetached } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -82,6 +83,64 @@ ipcMain.handle('ioc:getDataDir', async () => {
 ipcMain.handle('ioc:isFirstRun', async () => {
   return isFirstRun();
 });
+
+// ===== Daemon status and control IPC =====
+let daemonState = { running: false, pid: null, error: null, binaryPath: null, startedByUs: false };
+
+ipcMain.handle('ioc:daemonStatus', async () => {
+  const status = await isDaemonRunning();
+  daemonState.running = status.running;
+  daemonState.error = status.error || null;
+  return {
+    running: daemonState.running,
+    pid: daemonState.pid,
+    error: daemonState.error,
+    binaryPath: daemonState.binaryPath,
+    startedByUs: daemonState.startedByUs
+  };
+});
+
+/**
+ * Auto-start daemon on app launch if not already running.
+ * Called from app.whenReady().
+ */
+async function initDaemon() {
+  ensureConf();
+
+  // Check if daemon is already running
+  const status = await isDaemonRunning();
+  if (status.running) {
+    console.log('[daemon] Already running, attaching...');
+    daemonState.running = true;
+    daemonState.startedByUs = false;
+    return { ok: true, attached: true };
+  }
+
+  // Find daemon binary
+  const binary = findDaemonBinary();
+  if (!binary.found) {
+    const errorMsg = `iocoind not found. Searched: ${binary.searched.join(', ')}`;
+    console.error('[daemon]', errorMsg);
+    daemonState.error = errorMsg;
+    return { ok: false, error: errorMsg, searched: binary.searched };
+  }
+
+  daemonState.binaryPath = binary.path;
+  console.log('[daemon] Starting daemon from:', binary.path);
+
+  // Start daemon
+  const started = startDetached(binary.path);
+  if (started) {
+    daemonState.startedByUs = true;
+    console.log('[daemon] Daemon started successfully');
+    return { ok: true, started: true, path: binary.path };
+  } else {
+    daemonState.error = 'Failed to start daemon';
+    return { ok: false, error: 'Failed to start daemon' };
+  }
+}
+// ===== End daemon IPC =====
+
 // ===== End first-run IPC =====
 
 /** ---- Coalesced, cached status snapshot ---- */
@@ -211,7 +270,12 @@ function createWindow() {
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  // Initialize daemon before showing window
+  const daemonResult = await initDaemon();
+  console.log('[app] Daemon init result:', daemonResult);
+  createWindow();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 (()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();

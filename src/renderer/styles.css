@@ -208,3 +208,50 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   border-radius: 10px;
   border: 2px solid #0f171c;
 }
+
+
+/* ===== Connection Banner (Step B3) ===== */
+.connect-banner {
+  background: linear-gradient(135deg, #1a2830 0%, #0f1f24 100%);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.connect-banner.error {
+  border-color: var(--danger);
+  background: linear-gradient(135deg, #2a1a1a 0%, #1f1414 100%);
+}
+.connect-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+#connectText {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+.connect-banner.error #connectText {
+  color: var(--danger);
+}
+.connect-error {
+  color: var(--danger);
+  font-size: 12px;
+  max-width: 400px;
+  word-break: break-word;
+}
+.connect-help {
+  display: inline-block;
+  color: var(--teal);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.connect-help:hover {
+  opacity: 0.8;
+}
+/* ===== End Connection Banner ===== */

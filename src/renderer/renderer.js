@@ -5,6 +5,51 @@ let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
 
+// ===== Connection State (Step B3) =====
+let connectionState = {
+  connected: false,
+  attempts: 0,
+  maxAttempts: 8,       // ~30s total with backoff: 1+2+4+8+8+8+8+8 = 47s capped
+  startTime: null,
+  lastError: null
+};
+
+function showConnectBanner(text, isError, errorDetail) {
+  const banner = $('connectBanner');
+  const textEl = $('connectText');
+  const errorEl = $('connectError');
+  const helpEl = $('connectHelp');
+  if (!banner) return;
+
+  banner.classList.remove('hidden');
+  banner.classList.toggle('error', !!isError);
+  if (textEl) textEl.textContent = text || 'Connecting to daemon...';
+
+  if (isError && errorDetail) {
+    if (errorEl) {
+      errorEl.textContent = errorDetail;
+      errorEl.classList.remove('hidden');
+    }
+    if (helpEl) helpEl.classList.remove('hidden');
+  } else {
+    if (errorEl) errorEl.classList.add('hidden');
+    if (helpEl) helpEl.classList.add('hidden');
+  }
+}
+
+function hideConnectBanner() {
+  const banner = $('connectBanner');
+  if (banner) banner.classList.add('hidden');
+  connectionState.connected = true;
+}
+
+function getRetryDelay(attempt) {
+  // Backoff: 1s, 2s, 4s, 8s, then cap at 8s
+  const delays = [1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000];
+  return delays[Math.min(attempt, delays.length - 1)];
+}
+// ===== End Connection State =====
+
 function setSync(pct, text) {
   const bar = $('syncbar');
   if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
@@ -85,6 +130,8 @@ async function refresh() {
   refreshing = true;
   const startTime = Date.now();
   let timedOut = false;
+  let connectionFailed = false;
+
   try {
     console.log('[refresh] Starting status fetch');
     const statusPromise = window.ioc.status();
@@ -94,6 +141,14 @@ async function refresh() {
     const st = await Promise.race([statusPromise, timeoutPromise]);
     const elapsed = Date.now() - startTime;
     console.log(`[refresh] Completed in ${elapsed}ms`);
+
+    // Connection succeeded - hide banner and reset state
+    if (!connectionState.connected) {
+      hideConnectBanner();
+      connectionState.attempts = 0;
+      connectionState.lastError = null;
+    }
+
     const info = st?.info || {};
     const bal = Number(info.balance || info.walletbalance || 0);
 
@@ -134,11 +189,30 @@ async function refresh() {
     }
   } catch (err) {
     const elapsed = Date.now() - startTime;
+    connectionFailed = true;
+    connectionState.lastError = (err && err.message) ? err.message : String(err);
+
     if (err && err.message && err.message.includes('timeout')) {
       timedOut = true;
       console.error(`[refresh] Timed out after ${elapsed}ms`);
     } else {
-      console.error(`[refresh] Failed after ${elapsed}ms:`, (err && err.message) ? err.message : err);
+      console.error(`[refresh] Failed after ${elapsed}ms:`, connectionState.lastError);
+    }
+
+    // Handle connection failure with retry/backoff
+    if (!connectionState.connected) {
+      connectionState.attempts++;
+      if (connectionState.attempts >= connectionState.maxAttempts) {
+        // Max attempts reached - show error state
+        showConnectBanner(
+          'Daemon not responding',
+          true,
+          'Could not connect to iocoind. Ensure the daemon is installed and running.'
+        );
+      } else {
+        // Still retrying - show connecting state
+        showConnectBanner(`Connecting to daemon... (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+      }
     }
   }
   finally {
@@ -146,12 +220,20 @@ async function refresh() {
     // Adaptive polling: faster while syncing, slower when synced; extra-slow when tab/window hidden
     const isHidden = document.hidden;
     const vp = last.vp || 0;
-    const base = vp < 0.999 ? 1500 : 4000;
-    let delay = isHidden ? Math.max(base, 10000) : base;
-    if (timedOut) {
-      delay = Math.max(delay, 6000);
+    let delay;
+
+    if (connectionFailed && !connectionState.connected) {
+      // Use backoff delay when not connected
+      delay = getRetryDelay(connectionState.attempts);
+      console.log(`[refresh] Connection failed, retry in ${delay}ms (attempt ${connectionState.attempts})`);
+    } else {
+      const base = vp < 0.999 ? 1500 : 4000;
+      delay = isHidden ? Math.max(base, 10000) : base;
+      if (timedOut) {
+        delay = Math.max(delay, 6000);
+      }
+      console.log(`[refresh] Next refresh in ${delay}ms (vp=${vp.toFixed(3)}, hidden=${isHidden}, timedOut=${timedOut})`);
     }
-    console.log(`[refresh] Next refresh in ${delay}ms (vp=${vp.toFixed(3)}, hidden=${isHidden}, timedOut=${timedOut})`);
     scheduleRefresh(delay);
   }
 }
@@ -273,7 +355,28 @@ function main() {
   $('createNewAddr').addEventListener('click', createNewAddr);
   $('newLabel').addEventListener('keydown', e => { if (e.key === 'Enter') createNewAddr(); if (e.key === 'Escape') {$('newAddrModal').classList.add('hidden');}});
 
-  // Kick off the adaptive loop
+  // Setup help link to open externally
+  const helpLink = $('connectHelp');
+  if (helpLink) {
+    helpLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Use shell.openExternal via electron if available, otherwise fallback
+      if (window.require) {
+        try {
+          const { shell } = window.require('electron');
+          shell.openExternal(helpLink.href);
+        } catch (_) {
+          window.open(helpLink.href, '_blank');
+        }
+      } else {
+        window.open(helpLink.href, '_blank');
+      }
+    });
+  }
+
+  // Show initial connecting banner, then kick off refresh loop
+  connectionState.startTime = Date.now();
+  showConnectBanner('Connecting to daemon...');
   refresh();
 }
 document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){}});

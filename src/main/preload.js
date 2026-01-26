@@ -9,7 +9,9 @@ contextBridge.exposeInMainWorld('ioc', {
   getDataDir: () => ipcRenderer.invoke('ioc:getDataDir'),
   isFirstRun: () => ipcRenderer.invoke('ioc:isFirstRun'),
   // Daemon status
-  daemonStatus: () => ipcRenderer.invoke('ioc:daemonStatus')
+  daemonStatus: () => ipcRenderer.invoke('ioc:daemonStatus'),
+  // Open external URL
+  openExternal: (url) => ipcRenderer.invoke('ioc:openExternal', url)
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();

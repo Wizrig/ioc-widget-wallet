@@ -355,21 +355,13 @@ function main() {
   $('createNewAddr').addEventListener('click', createNewAddr);
   $('newLabel').addEventListener('keydown', e => { if (e.key === 'Enter') createNewAddr(); if (e.key === 'Escape') {$('newAddrModal').classList.add('hidden');}});
 
-  // Setup help link to open externally
+  // Setup help link to open externally via IPC
   const helpLink = $('connectHelp');
   if (helpLink) {
     helpLink.addEventListener('click', (e) => {
       e.preventDefault();
-      // Use shell.openExternal via electron if available, otherwise fallback
-      if (window.require) {
-        try {
-          const { shell } = window.require('electron');
-          shell.openExternal(helpLink.href);
-        } catch (_) {
-          window.open(helpLink.href, '_blank');
-        }
-      } else {
-        window.open(helpLink.href, '_blank');
+      if (window.ioc && window.ioc.openExternal) {
+        window.ioc.openExternal(helpLink.href);
       }
     });
   }

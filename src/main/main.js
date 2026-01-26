@@ -141,7 +141,16 @@ async function initDaemon() {
 }
 // ===== End daemon IPC =====
 
-// ===== End first-run IPC =====
+// ===== Open external URL IPC =====
+const { shell } = require('electron');
+ipcMain.handle('ioc:openExternal', async (_e, url) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    await shell.openExternal(url);
+    return { ok: true };
+  }
+  return { ok: false, error: 'Invalid URL' };
+});
+// ===== End openExternal IPC =====
 
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };

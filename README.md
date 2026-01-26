@@ -91,4 +91,3 @@ See [LICENSE](LICENSE) file for details.
 ## 🤝 Contributing
 
 This is widget like wallet for I/O Coin. Contributions and feedback are welcome.
-

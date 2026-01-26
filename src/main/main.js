@@ -215,6 +215,87 @@ ipcMain.handle('ioc:bootstrapCleanup', async () => {
 });
 // ===== End Bootstrap IPC =====
 
+// ===== Exit Confirmation Dialog (Step D) =====
+const { dialog } = require('electron');
+
+// Track if we should skip the confirmation (user already chose)
+let exitConfirmed = false;
+
+/**
+ * Show exit confirmation dialog.
+ * Returns: 'quit' | 'hide' | 'cancel'
+ */
+async function showExitConfirmation(win) {
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: ['Close Wallet Completely', 'Close UI Only', 'Cancel'],
+    defaultId: 2,
+    cancelId: 2,
+    title: 'Close I/O Coin Wallet',
+    message: 'How would you like to close the wallet?',
+    detail: 'Close Wallet Completely: Stops the daemon and exits.\nClose UI Only: Keeps the daemon running in the background.'
+  });
+
+  switch (result.response) {
+    case 0: return 'quit';
+    case 1: return 'hide';
+    default: return 'cancel';
+  }
+}
+
+/**
+ * Stop the daemon gracefully before quitting.
+ */
+async function stopDaemonAndQuit() {
+  const { stopViaCli, findCliBinary } = require('./daemon');
+  const cli = findCliBinary();
+
+  if (cli.found && daemonState.startedByUs) {
+    console.log('[exit] Stopping daemon before quit...');
+    try {
+      await stopViaCli(cli.path);
+      // Wait for daemon to stop
+      await new Promise(r => setTimeout(r, 1500));
+    } catch (err) {
+      console.error('[exit] Failed to stop daemon:', err.message);
+    }
+  }
+
+  exitConfirmed = true;
+  app.quit();
+}
+
+ipcMain.handle('ioc:exitConfirmation', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return { action: 'cancel' };
+
+  const action = await showExitConfirmation(win);
+  return { action };
+});
+
+ipcMain.handle('ioc:quitApp', async (event, stopDaemon) => {
+  if (stopDaemon) {
+    await stopDaemonAndQuit();
+  } else {
+    exitConfirmed = true;
+    app.quit();
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('ioc:hideWindow', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (process.platform === 'darwin') {
+      app.hide();
+    } else {
+      win.hide();
+    }
+  }
+  return { ok: true };
+});
+// ===== End Exit Confirmation =====
+
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {
@@ -339,6 +420,26 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+
+  // Handle window close with confirmation dialog
+  win.on('close', async (e) => {
+    if (exitConfirmed) return; // Already confirmed, let it close
+
+    e.preventDefault();
+    const action = await showExitConfirmation(win);
+
+    if (action === 'quit') {
+      await stopDaemonAndQuit();
+    } else if (action === 'hide') {
+      if (process.platform === 'darwin') {
+        app.hide();
+      } else {
+        win.hide();
+      }
+    }
+    // 'cancel' does nothing, window stays open
+  });
+
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 

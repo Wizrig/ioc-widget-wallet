@@ -550,10 +550,12 @@ function createWindow() {
       // Yes - quit app, keep daemon running
       exitConfirmed = true;
       app.quit();
+      return;
     } else {
       // No - stop daemon and quit completely
       exitConfirmed = true;
       await stopDaemonAndQuitHard();
+      return;
     }
   });
 
@@ -578,8 +580,11 @@ app.whenReady().then(async () => {
   createWindow();
 });
 app.on('window-all-closed', () => {
-  // Both Yes and No paths set exitConfirmed and quit, so always quit here
-  app.quit();
+  if (process.platform === 'darwin') {
+    if (exitConfirmed) app.quit();
+  } else {
+    app.quit();
+  }
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 (()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();

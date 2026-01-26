@@ -21,7 +21,11 @@ contextBridge.exposeInMainWorld('ioc', {
   onBootstrapProgress: (cb) => {
     ipcRenderer.removeAllListeners('bootstrap:progress');
     ipcRenderer.on('bootstrap:progress', (_ev, progress) => cb(progress));
-  }
+  },
+  // Exit confirmation and window control
+  exitConfirmation: () => ipcRenderer.invoke('ioc:exitConfirmation'),
+  quitApp: (stopDaemon = true) => ipcRenderer.invoke('ioc:quitApp', stopDaemon),
+  hideWindow: () => ipcRenderer.invoke('ioc:hideWindow')
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();

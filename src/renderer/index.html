@@ -130,6 +130,23 @@
     </div>
   </div>
 
+  <!-- Bootstrap modal (first-run chain data download) -->
+  <div id="bootstrapModal" class="modal hidden">
+    <div class="sheet bootstrap-sheet">
+      <div class="title2">First Run Setup</div>
+      <div id="bootstrapStatus" class="bootstrap-status">Checking chain data...</div>
+      <div class="progress bootstrap-progress">
+        <div id="bootstrapBar" class="bootstrap-bar"></div>
+      </div>
+      <div id="bootstrapPercent" class="bootstrap-percent"></div>
+      <div id="bootstrapError" class="err hidden"></div>
+      <div id="bootstrapActions" class="row hidden">
+        <button id="bootstrapSkip" class="btn">Skip (Manual Sync)</button>
+        <button id="bootstrapRetry" class="btn btn-ok">Retry</button>
+      </div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

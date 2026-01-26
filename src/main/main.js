@@ -227,17 +227,17 @@ const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 
 /**
  * Show exit confirmation dialog.
- * Returns: 0 (No - quit) or 1 (Yes - hide)
+ * Returns: 0 = Close Wallet Completely, 1 = Close UI Only, 2 = Cancel
  */
 async function showExitConfirmation(win) {
   const iconImage = fs.existsSync(ICON_PATH) ? nativeImage.createFromPath(ICON_PATH) : undefined;
   const result = await dialog.showMessageBox(win, {
     type: 'none',
     icon: iconImage,
-    buttons: ['No', 'Yes'],
+    buttons: ['Close Wallet Completely', 'Close UI Only', 'Cancel'],
     defaultId: 1,
-    cancelId: 1,
-    message: 'Leave demon running (recommended)?'
+    cancelId: 2,
+    message: 'How would you like to close?'
   });
   return result.response;
 }
@@ -547,15 +547,24 @@ function createWindow() {
 
     const response = await showExitConfirmation(win);
 
-    if (response === 1) {
+    if (response === 0) {
+      // Close Wallet Completely - stop daemon and quit
       exitConfirmed = true;
-      app.quit();
+      await stopDaemonAndQuitHard();
       return;
     }
 
-    exitConfirmed = true;
-    await stopDaemonAndQuitHard();
-    return;
+    if (response === 1) {
+      // Close UI Only - hide window, keep daemon running
+      if (process.platform === 'darwin') {
+        app.hide();
+      } else {
+        win.hide();
+      }
+      return;
+    }
+
+    // response === 2: Cancel - do nothing, app continues
   });
 
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));

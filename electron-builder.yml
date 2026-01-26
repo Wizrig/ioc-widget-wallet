@@ -4,6 +4,7 @@ mac:
   category: public.app-category.finance
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
+  icon: assets/icon.icns
   target:
     - target: dmg
       arch:
@@ -14,3 +15,14 @@ files:
   - "package.json"
 dmg:
   sign: false
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+    - x: 270
+      y: 220
+      type: file
+      path: iocoind

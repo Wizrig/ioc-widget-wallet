@@ -216,69 +216,194 @@ ipcMain.handle('ioc:bootstrapCleanup', async () => {
 // ===== End Bootstrap IPC =====
 
 // ===== Exit Confirmation Dialog (Step D) =====
-const { dialog } = require('electron');
+const { dialog, nativeImage } = require('electron');
+const { execSync } = require('child_process');
 
 // Track if we should skip the confirmation (user already chose)
 let exitConfirmed = false;
 
+// Path to IOCoin icon for dialog
+const ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+
 /**
  * Show exit confirmation dialog.
- * Returns: 'quit' | 'hide' | 'cancel'
+ * Returns: 0 (No - quit) or 1 (Yes - hide)
  */
 async function showExitConfirmation(win) {
+  const iconImage = fs.existsSync(ICON_PATH) ? nativeImage.createFromPath(ICON_PATH) : undefined;
   const result = await dialog.showMessageBox(win, {
-    type: 'question',
-    buttons: ['Close Wallet Completely', 'Close UI Only', 'Cancel'],
-    defaultId: 2,
-    cancelId: 2,
-    title: 'Close I/O Coin Wallet',
-    message: 'How would you like to close the wallet?',
-    detail: 'Close Wallet Completely: Stops the daemon and exits.\nClose UI Only: Keeps the daemon running in the background.'
+    type: 'none',
+    icon: iconImage,
+    buttons: ['No', 'Yes'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'Leave daemon running (recommended)?'
   });
+  return result.response;
+}
 
-  switch (result.response) {
-    case 0: return 'quit';
-    case 1: return 'hide';
-    default: return 'cancel';
+/**
+ * Poll isDaemonRunning until it returns false or timeout.
+ * @param {number} timeoutMs - Max time to wait
+ * @param {number} intervalMs - Poll interval
+ * @returns {Promise<boolean>} - true if stopped, false if still running
+ */
+async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
+  const { isDaemonRunning } = require('./daemon');
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const status = await isDaemonRunning();
+    if (!status.running) {
+      console.log('[exit] Daemon confirmed stopped');
+      return true;
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+/**
+ * Find daemon PID from pidfile or pgrep.
+ * @returns {number|null}
+ */
+function findDaemonPid() {
+  // Check pidfile
+  const pidFile = path.join(DATA_DIR, 'iocoind.pid');
+  if (fs.existsSync(pidFile)) {
+    try {
+      const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (pid > 0) {
+        console.log('[exit] Found daemon PID from pidfile:', pid);
+        return pid;
+      }
+    } catch (_) {}
+  }
+
+  // Fallback: use pgrep on unix
+  if (process.platform !== 'win32') {
+    try {
+      const output = execSync('pgrep -x iocoind', { encoding: 'utf8', timeout: 3000 });
+      const pid = parseInt(output.trim().split('\n')[0], 10);
+      if (pid > 0) {
+        console.log('[exit] Found daemon PID from pgrep:', pid);
+        return pid;
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+/**
+ * Force kill daemon by PID.
+ * @param {number} pid
+ * @param {string} signal - 'SIGTERM' or 'SIGKILL'
+ */
+function killDaemonByPid(pid, signal) {
+  try {
+    console.log(`[exit] Sending ${signal} to PID ${pid}`);
+    process.kill(pid, signal);
+    return true;
+  } catch (err) {
+    console.error(`[exit] Failed to kill PID ${pid}:`, err.message);
+    return false;
   }
 }
 
 /**
- * Stop the daemon gracefully before quitting.
+ * Force kill daemon by process name (last resort).
  */
-async function stopDaemonAndQuit() {
-  const { stopViaCli, findCliBinary } = require('./daemon');
-  const cli = findCliBinary();
+function killDaemonByName(signal) {
+  if (process.platform === 'win32') return false;
+  const sigFlag = signal === 'SIGKILL' ? '-KILL' : '-TERM';
+  try {
+    console.log(`[exit] Running pkill ${sigFlag} iocoind`);
+    execSync(`pkill ${sigFlag} iocoind`, { timeout: 5000 });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
-  if (cli.found && daemonState.startedByUs) {
-    console.log('[exit] Stopping daemon before quit...');
+/**
+ * Hard guarantee stop daemon and quit.
+ * Will not return until daemon is confirmed stopped or all attempts exhausted.
+ */
+async function stopDaemonAndQuitHard() {
+  const { stopViaCli, findCliBinary, isDaemonRunning } = require('./daemon');
+
+  console.log('[exit] Starting hard shutdown sequence...');
+
+  // Step A: Attempt graceful stop via CLI
+  const cli = findCliBinary();
+  if (cli.found) {
+    console.log('[exit] Sending stop command via CLI...');
     try {
       await stopViaCli(cli.path);
-      // Wait for daemon to stop
-      await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
-      console.error('[exit] Failed to stop daemon:', err.message);
+      console.error('[exit] CLI stop failed:', err.message);
+    }
+
+    // Poll for up to 20 seconds
+    const stopped = await waitForDaemonStop(20000, 500);
+    if (stopped) {
+      console.log('[exit] Daemon stopped gracefully');
+      app.exit(0);
+      return;
     }
   }
 
-  exitConfirmed = true;
-  app.quit();
+  // Step B: Try SIGTERM by PID
+  let pid = findDaemonPid();
+  if (pid) {
+    killDaemonByPid(pid, 'SIGTERM');
+    const stopped = await waitForDaemonStop(10000, 500);
+    if (stopped) {
+      console.log('[exit] Daemon stopped after SIGTERM');
+      app.exit(0);
+      return;
+    }
+
+    // Try SIGKILL
+    killDaemonByPid(pid, 'SIGKILL');
+    const stoppedKill = await waitForDaemonStop(5000, 500);
+    if (stoppedKill) {
+      console.log('[exit] Daemon stopped after SIGKILL');
+      app.exit(0);
+      return;
+    }
+  }
+
+  // Step C: Last resort - pkill by name
+  const status = await isDaemonRunning();
+  if (status.running) {
+    console.log('[exit] Daemon still running, using pkill...');
+    killDaemonByName('SIGTERM');
+    let stopped = await waitForDaemonStop(5000, 500);
+    if (!stopped) {
+      killDaemonByName('SIGKILL');
+      stopped = await waitForDaemonStop(3000, 500);
+    }
+  }
+
+  // Step D: Quit regardless
+  console.log('[exit] Exiting Electron...');
+  app.exit(0);
 }
 
 ipcMain.handle('ioc:exitConfirmation', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return { action: 'cancel' };
-
-  const action = await showExitConfirmation(win);
-  return { action };
+  if (!win) return { action: 1 };
+  const response = await showExitConfirmation(win);
+  return { action: response };
 });
 
 ipcMain.handle('ioc:quitApp', async (event, stopDaemon) => {
+  exitConfirmed = true;
   if (stopDaemon) {
-    await stopDaemonAndQuit();
+    await stopDaemonAndQuitHard();
   } else {
-    exitConfirmed = true;
-    app.quit();
+    app.exit(0);
   }
   return { ok: true };
 });
@@ -426,18 +551,20 @@ function createWindow() {
     if (exitConfirmed) return; // Already confirmed, let it close
 
     e.preventDefault();
-    const action = await showExitConfirmation(win);
+    const response = await showExitConfirmation(win);
 
-    if (action === 'quit') {
-      await stopDaemonAndQuit();
-    } else if (action === 'hide') {
+    if (response === 1) {
+      // Yes - hide UI only, keep daemon running
       if (process.platform === 'darwin') {
         app.hide();
       } else {
         win.hide();
       }
+    } else {
+      // No - stop daemon and quit completely
+      exitConfirmed = true;
+      await stopDaemonAndQuitHard();
     }
-    // 'cancel' does nothing, window stays open
   });
 
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -449,7 +576,13 @@ app.whenReady().then(async () => {
   console.log('[app] Daemon init result:', daemonResult);
   createWindow();
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  // On macOS, if exitConfirmed is true, user chose to quit completely
+  // Otherwise, keep app running (dock icon can reopen)
+  if (process.platform !== 'darwin' || exitConfirmed) {
+    app.quit();
+  }
+});
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 (()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();
 (()=>{if(global.__iocDiagRegistered)return;global.__iocDiagRegistered=true;const e=require('electron');const cp=require('child_process');const procs=new Map();function start(wc){if(procs.has(wc.id))return;const p=cp.spawn('tail',['-F','-n0',`${process.env.HOME||require('os').homedir()}/Library/Application Support/IOCoin/debug.log`],{stdio:['ignore','pipe','pipe']});procs.set(wc.id,p);const send=d=>{try{wc.send('diag:data',String(d))}catch{}};p.stdout.on('data',send);p.stderr.on('data',send);p.on('close',()=>{procs.delete(wc.id)});wc.once('destroyed',()=>{try{p.kill()}catch{} procs.delete(wc.id)})}function stop(wc){const p=procs.get(wc.id);if(p){try{p.kill()}catch{} procs.delete(wc.id)}}e.ipcMain.on('diag:start',ev=>start(ev.sender));e.ipcMain.on('diag:stop',ev=>stop(ev.sender))})();

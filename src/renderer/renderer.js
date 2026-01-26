@@ -5,6 +5,32 @@ let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
 
+// ===== Splash State =====
+let splashState = {
+  visible: true,
+  validStatusReceived: false
+};
+
+function showSplash(text) {
+  const overlay = $('splashOverlay');
+  const status = $('splashStatus');
+  if (overlay) overlay.classList.remove('hidden');
+  if (status && text) status.textContent = text;
+  splashState.visible = true;
+}
+
+function hideSplash() {
+  const overlay = $('splashOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  splashState.visible = false;
+}
+
+function updateSplashStatus(text) {
+  const status = $('splashStatus');
+  if (status && text) status.textContent = text;
+}
+// ===== End Splash State =====
+
 // ===== Connection State (Step B3) =====
 let connectionState = {
   connected: false,
@@ -182,23 +208,75 @@ function setupBootstrapHandlers() {
 }
 // ===== End Bootstrap State =====
 
-function setSync(pct, text) {
+/**
+ * Update sync bar and text based on chain state.
+ * @param {number} blocks - current block height
+ * @param {number} headers - total headers (target height)
+ * @param {number} verificationProgress - 0-1 progress value
+ */
+function updateSyncDisplay(blocks, headers, verificationProgress) {
   const bar = $('syncbar');
-  if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
-
   const t = $('syncText');
   const wrap = document.querySelector('#tab-overview .sync-wrap');
 
-  // Hide sync bar when fully synced, keep block counts in the text
+  // Don't update if we have no valid data
+  if (blocks === 0 && headers === 0) {
+    return; // Keep whatever was showing, don't show 0/0
+  }
+
+  // Calculate percentage
+  let pct;
+  if (typeof verificationProgress === 'number' && verificationProgress > 0) {
+    pct = Math.round(verificationProgress * 100);
+  } else if (headers > 0) {
+    pct = Math.round((blocks / headers) * 100);
+  } else {
+    pct = blocks > 0 ? 100 : 0;
+  }
+  pct = Math.max(0, Math.min(100, pct));
+
+  // Use headers if available, otherwise just show blocks
+  const targetBlocks = headers > 0 ? headers : blocks;
+  const isSynced = pct >= 100 || (blocks > 0 && blocks >= targetBlocks);
+
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.style.display = isSynced ? 'none' : '';
+  }
+
+  if (t) {
+    if (isSynced) {
+      t.textContent = `Synced (${blocks.toLocaleString()} / ${targetBlocks.toLocaleString()} blocks)`;
+    } else {
+      t.textContent = `Syncing wallet (${blocks.toLocaleString()} / ${targetBlocks.toLocaleString()} blocks)`;
+    }
+  }
+
+  if (wrap) wrap.classList.toggle('synced', isSynced);
+
+  const syncChip = $('ic-sync');
+  if (syncChip) syncChip.classList.toggle('ok', isSynced);
+}
+
+// Legacy wrapper for compatibility
+function setSync(pct, text) {
+  // This function is kept for any external calls but updateSyncDisplay is preferred
+  const bar = $('syncbar');
+  const t = $('syncText');
+  const wrap = document.querySelector('#tab-overview .sync-wrap');
+
   if ((pct || 0) >= 100) {
     if (bar) bar.style.display = 'none';
     if (t) {
       const syncedText = (text || '').trim().replace(/^Syncing wallet/i, 'Synced');
-      t.textContent = syncedText || 'OK Synced';
+      t.textContent = syncedText || 'Synced';
     }
     if (wrap) wrap.classList.add('synced');
   } else {
-    if (bar) bar.style.display = '';
+    if (bar) {
+      bar.style.display = '';
+      bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+    }
     if (t) t.textContent = text || '';
     if (wrap) wrap.classList.remove('synced');
   }
@@ -274,11 +352,35 @@ async function refresh() {
     const elapsed = Date.now() - startTime;
     console.log(`[refresh] Completed in ${elapsed}ms`);
 
-    // Connection succeeded - hide banner and reset state
-    if (!connectionState.connected) {
-      hideConnectBanner();
-      connectionState.attempts = 0;
-      connectionState.lastError = null;
+    // Extract chain data
+    const blocks = st?.chain?.blocks || 0;
+    const headers = st?.chain?.headers || blocks || 0;
+    const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : (headers ? blocks / headers : 0);
+
+    // Check if we have valid chain data (not 0/0)
+    const hasValidChainData = blocks > 0 || headers > 0;
+
+    // Handle splash visibility
+    if (splashState.visible) {
+      if (hasValidChainData) {
+        // We have valid data - hide splash and show main UI
+        splashState.validStatusReceived = true;
+        hideSplash();
+        hideConnectBanner();
+        connectionState.connected = true;
+        connectionState.attempts = 0;
+        connectionState.lastError = null;
+      } else {
+        // Still warming up - update splash status
+        updateSplashStatus('Connecting to demon…');
+      }
+    } else {
+      // Splash already hidden - normal connection handling
+      if (!connectionState.connected) {
+        hideConnectBanner();
+        connectionState.attempts = 0;
+        connectionState.lastError = null;
+      }
     }
 
     const info = st?.info || {};
@@ -290,12 +392,9 @@ async function refresh() {
       last.bal = bal; fitBalance();
     }
 
-    const blocks = st?.chain?.blocks || 0;
-    const headers = st?.chain?.headers || blocks || 0;
-    const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : (headers ? blocks / headers : 0);
-    const pct = Math.round((vp || 0) * 100);
-    if (last.vp !== vp || last.blocks !== blocks || last.headers !== headers) {
-      setSync(pct, `Syncing wallet (${blocks} / ${headers} blocks)`);
+    // Update sync display only if we have valid data
+    if (hasValidChainData && (last.vp !== vp || last.blocks !== blocks || last.headers !== headers)) {
+      updateSyncDisplay(blocks, headers, vp);
       last.vp = vp;
       last.blocks = blocks;
       last.headers = headers;
@@ -334,16 +433,32 @@ async function refresh() {
     // Handle connection failure with retry/backoff
     if (!connectionState.connected) {
       connectionState.attempts++;
-      if (connectionState.attempts >= connectionState.maxAttempts) {
-        // Max attempts reached - show error state
-        showConnectBanner(
-          'Daemon not responding',
-          true,
-          'Could not connect to iocoind. Ensure the daemon is installed and running.'
-        );
+
+      if (splashState.visible) {
+        // Still in splash mode - update splash status
+        if (connectionState.attempts >= connectionState.maxAttempts) {
+          // Max attempts in splash - hide splash, show connection error banner
+          hideSplash();
+          showConnectBanner(
+            'Demon not responding',
+            true,
+            'Could not connect to iocoind. Ensure the demon is installed and running.'
+          );
+        } else {
+          // Still retrying in splash
+          updateSplashStatus(`Starting demon… (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+        }
       } else {
-        // Still retrying - show connecting state
-        showConnectBanner(`Connecting to daemon... (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+        // Not in splash mode - use connection banner
+        if (connectionState.attempts >= connectionState.maxAttempts) {
+          showConnectBanner(
+            'Demon not responding',
+            true,
+            'Could not connect to iocoind. Ensure the demon is installed and running.'
+          );
+        } else {
+          showConnectBanner(`Connecting to demon… (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+        }
       }
     }
   }
@@ -509,9 +624,10 @@ function main() {
       console.error('[main] Bootstrap flow error:', err);
     }
 
-    // After bootstrap (or if not needed), show connecting banner and start refresh
+    // After bootstrap (or if not needed), splash is already visible
+    // Start refresh loop - splash will hide when valid status is received
     connectionState.startTime = Date.now();
-    showConnectBanner('Connecting to daemon...');
+    // Don't show connect banner - splash handles warmup display
     refresh();
   })();
 }

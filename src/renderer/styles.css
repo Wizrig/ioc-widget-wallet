@@ -289,3 +289,56 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   margin-top: 12px;
 }
 /* ===== End Bootstrap Modal ===== */
+
+/* ===== Splash Overlay (daemon warmup) ===== */
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+.splash-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-content {
+  text-align: center;
+  padding: 40px;
+}
+.splash-logo {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 24px;
+  opacity: 0.95;
+}
+.splash-status {
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 20px;
+}
+.splash-progress {
+  width: 200px;
+  height: 6px;
+  background: #0b151a;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+.splash-bar {
+  width: 30%;
+  height: 100%;
+  background: var(--teal);
+  border-radius: 6px;
+  animation: splash-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes splash-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(233%); }
+  100% { transform: translateX(-100%); }
+}
+/* ===== End Splash Overlay ===== */

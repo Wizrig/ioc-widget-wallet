@@ -17,7 +17,7 @@ Provides a lightweight GUI to interact with `iocoind`.
 - Send IOC flow (prompts to unlock if wallet is locked)
 - **Backup Tools**: dump, import, open default path, backup wallet.dat
 - **Debug Tools**: start/stop live debug log tail
-- **Theme Panel** (now styled consistently with Wallet Tools in RC1)
+
 
 ---
 

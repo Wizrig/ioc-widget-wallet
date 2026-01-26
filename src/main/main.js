@@ -152,6 +152,69 @@ ipcMain.handle('ioc:openExternal', async (_e, url) => {
 });
 // ===== End openExternal IPC =====
 
+// ===== Bootstrap IPC handlers =====
+const bootstrap = require('./bootstrap');
+
+ipcMain.handle('ioc:needsBootstrap', async () => {
+  return bootstrap.needsBootstrap();
+});
+
+// Track download state for progress events
+let bootstrapDownloadAbort = null;
+
+ipcMain.handle('ioc:downloadBootstrap', async (event) => {
+  // Send progress events to the renderer
+  const sendProgress = (progress) => {
+    try {
+      if (event.sender && !event.sender.isDestroyed()) {
+        event.sender.send('bootstrap:progress', progress);
+      }
+    } catch (_) {}
+  };
+
+  const result = await bootstrap.downloadBootstrap(sendProgress);
+  return result;
+});
+
+ipcMain.handle('ioc:applyBootstrap', async () => {
+  // 1. Extract the bootstrap
+  const extractResult = await bootstrap.extractBootstrap();
+  if (!extractResult.ok) {
+    return extractResult;
+  }
+
+  // 2. Clean up the zip file
+  bootstrap.cleanupBootstrap();
+
+  // 3. Restart daemon with new chain data
+  const { stopViaCli, startDetached, findDaemonBinary, findCliBinary } = require('./daemon');
+
+  // Stop daemon if running
+  const cli = findCliBinary();
+  if (cli.found) {
+    try {
+      await stopViaCli(cli.path);
+      // Wait a moment for clean shutdown
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (_) {
+      // Daemon might not be running, that's OK
+    }
+  }
+
+  // Start daemon
+  const binary = findDaemonBinary();
+  if (binary.found) {
+    startDetached(binary.path);
+  }
+
+  return { ok: true, restarted: true };
+});
+
+ipcMain.handle('ioc:bootstrapCleanup', async () => {
+  return bootstrap.cleanupBootstrap();
+});
+// ===== End Bootstrap IPC =====
+
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {

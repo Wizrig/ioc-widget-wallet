@@ -547,12 +547,9 @@ function createWindow() {
     const response = await showExitConfirmation(win);
 
     if (response === 1) {
-      // Yes - hide UI only, keep daemon running
-      if (process.platform === 'darwin') {
-        app.hide();
-      } else {
-        win.hide();
-      }
+      // Yes - quit app, keep daemon running
+      exitConfirmed = true;
+      app.quit();
     } else {
       // No - stop daemon and quit completely
       exitConfirmed = true;
@@ -564,17 +561,25 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Set dock icon on macOS (shows IOCoin icon instead of Electron in dev mode)
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+    if (fs.existsSync(dockIconPath)) {
+      const dockIcon = nativeImage.createFromPath(dockIconPath);
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+      }
+    }
+  }
+
   // Initialize daemon before showing window
   const daemonResult = await initDaemon();
   console.log('[app] Daemon init result:', daemonResult);
   createWindow();
 });
 app.on('window-all-closed', () => {
-  // On macOS, if exitConfirmed is true, user chose to quit completely
-  // Otherwise, keep app running (dock icon can reopen)
-  if (process.platform !== 'darwin' || exitConfirmed) {
-    app.quit();
-  }
+  // Both Yes and No paths set exitConfirmed and quit, so always quit here
+  app.quit();
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 (()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();

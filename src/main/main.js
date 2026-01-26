@@ -414,6 +414,49 @@ ipcMain.handle('ioc:hideWindow', async (event) => {
 });
 // ===== End Exit Confirmation =====
 
+/** ---- Remote tip cache (network block height from explorer) ---- */
+const remoteTipCache = { ts: 0, height: 0 };
+async function fetchRemoteTip() {
+  const now = Date.now();
+  // Refresh every 30s while syncing, 60s when synced
+  const cacheAge = now - remoteTipCache.ts;
+  if (remoteTipCache.height > 0 && cacheAge < 30000) {
+    return remoteTipCache.height;
+  }
+
+  try {
+    // Use cryptoid.info IOC explorer API
+    const https = require('https');
+    const height = await new Promise((resolve, reject) => {
+      const req = https.get('https://chainz.cryptoid.info/ioc/api.dws?q=getblockcount', {
+        timeout: 5000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          const h = parseInt(data.trim(), 10);
+          if (h > 0) {
+            resolve(h);
+          } else {
+            reject(new Error('Invalid response'));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    remoteTipCache.height = height;
+    remoteTipCache.ts = now;
+    console.log('[status] Remote tip updated:', height);
+    return height;
+  } catch (err) {
+    console.warn('[status] Failed to fetch remote tip:', err.message);
+    // Return cached value if available, otherwise 0
+    return remoteTipCache.height || 0;
+  }
+}
+
 /** ---- Coalesced, cached status snapshot ---- */
 const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {
@@ -446,8 +489,11 @@ async function computeStatus() {
 
   const peersPromise = safeRpc('getconnectioncount', [], 0);
 
-  const [wallet, chain, peers] = await Promise.all([walletPromise, chainPromise, peersPromise]);
-  return { info: wallet.info, chain, peers, staking: wallet.staking, lockst: wallet.lockst };
+  // Fetch remote tip in parallel (non-blocking)
+  const remoteTipPromise = fetchRemoteTip().catch(() => 0);
+
+  const [wallet, chain, peers, remoteTip] = await Promise.all([walletPromise, chainPromise, peersPromise, remoteTipPromise]);
+  return { info: wallet.info, chain, peers, staking: wallet.staking, lockst: wallet.lockst, remoteTip };
 }
 ipcMain.handle('ioc/status', async () => {
   const now = Date.now();

@@ -8,7 +8,10 @@ let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers
 // ===== Splash State =====
 let splashState = {
   visible: true,
-  validStatusReceived: false
+  validStatusReceived: false,
+  startTime: Date.now(),
+  initialBlocks: null,  // Track initial blocks to detect movement
+  longWaitShown: false
 };
 
 function showSplash(text) {
@@ -28,6 +31,16 @@ function hideSplash() {
 function updateSplashStatus(text) {
   const status = $('splashStatus');
   if (status && text) status.textContent = text;
+}
+
+// Check if splash should show "this may take a few minutes" message
+function checkSplashLongWait() {
+  if (!splashState.visible || splashState.longWaitShown) return;
+  const elapsed = Date.now() - splashState.startTime;
+  if (elapsed > 8000) { // 8 seconds threshold
+    splashState.longWaitShown = true;
+    updateSplashStatus('Connecting to daemon… this may take a few minutes');
+  }
 }
 // ===== End Splash State =====
 
@@ -210,34 +223,39 @@ function setupBootstrapHandlers() {
 
 /**
  * Update sync bar and text based on chain state.
- * @param {number} blocks - current block height
- * @param {number} headers - total headers (target height)
- * @param {number} verificationProgress - 0-1 progress value
+ * @param {number} blocks - current local block height
+ * @param {number} targetHeight - network tip height (from explorer or headers)
+ * @param {number} verificationProgress - 0-1 progress value (optional)
+ * @param {number} remoteTip - explicit remote tip if available
  */
-function updateSyncDisplay(blocks, headers, verificationProgress) {
+function updateSyncDisplay(blocks, targetHeight, verificationProgress, remoteTip) {
   const bar = $('syncbar');
   const t = $('syncText');
   const wrap = document.querySelector('#tab-overview .sync-wrap');
 
   // Don't update if we have no valid data
-  if (blocks === 0 && headers === 0) {
+  if (blocks === 0 && targetHeight === 0) {
     return; // Keep whatever was showing, don't show 0/0
   }
 
-  // Calculate percentage
+  // Use remoteTip as the authoritative target if available
+  const networkTip = remoteTip > 0 ? remoteTip : targetHeight;
+
+  // Calculate percentage based on local blocks vs network tip
   let pct;
-  if (typeof verificationProgress === 'number' && verificationProgress > 0) {
+  if (networkTip > 0 && blocks > 0) {
+    pct = Math.round((blocks / networkTip) * 100);
+  } else if (typeof verificationProgress === 'number' && verificationProgress > 0) {
     pct = Math.round(verificationProgress * 100);
-  } else if (headers > 0) {
-    pct = Math.round((blocks / headers) * 100);
   } else {
-    pct = blocks > 0 ? 100 : 0;
+    pct = 0;
   }
   pct = Math.max(0, Math.min(100, pct));
 
-  // Use headers if available, otherwise just show blocks
-  const targetBlocks = headers > 0 ? headers : blocks;
-  const isSynced = pct >= 100 || (blocks > 0 && blocks >= targetBlocks);
+  // Only consider synced if we have a network tip and local blocks >= network tip
+  // Never show "Synced" if we don't have a reliable network tip
+  const hasReliableTip = remoteTip > 0;
+  const isSynced = hasReliableTip && blocks >= remoteTip;
 
   if (bar) {
     bar.style.width = pct + '%';
@@ -246,9 +264,12 @@ function updateSyncDisplay(blocks, headers, verificationProgress) {
 
   if (t) {
     if (isSynced) {
-      t.textContent = `Synced (${blocks.toLocaleString()} / ${targetBlocks.toLocaleString()} blocks)`;
+      t.textContent = `Synced (${blocks.toLocaleString()} / ${networkTip.toLocaleString()} blocks)`;
+    } else if (networkTip > 0) {
+      t.textContent = `Syncing wallet (${blocks.toLocaleString()} / ${networkTip.toLocaleString()} blocks)`;
     } else {
-      t.textContent = `Syncing wallet (${blocks.toLocaleString()} / ${targetBlocks.toLocaleString()} blocks)`;
+      // No network tip available - just show local blocks, never say "Synced"
+      t.textContent = `Syncing wallet (${blocks.toLocaleString()} blocks)`;
     }
   }
 
@@ -354,25 +375,45 @@ async function refresh() {
 
     // Extract chain data
     const blocks = st?.chain?.blocks || 0;
-    const headers = st?.chain?.headers || blocks || 0;
-    const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : (headers ? blocks / headers : 0);
+    const headers = st?.chain?.headers || 0;
+    const remoteTip = st?.remoteTip || 0;  // Network tip from explorer API
+    const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : 0;
 
     // Check if we have valid chain data (not 0/0)
     const hasValidChainData = blocks > 0 || headers > 0;
 
-    // Handle splash visibility
+    // Handle splash visibility - hide as soon as chain activity is detected
     if (splashState.visible) {
+      // Check if we should show "this may take a few minutes"
+      checkSplashLongWait();
+
       if (hasValidChainData) {
-        // We have valid data - hide splash and show main UI
-        splashState.validStatusReceived = true;
-        hideSplash();
-        hideConnectBanner();
-        connectionState.connected = true;
-        connectionState.attempts = 0;
-        connectionState.lastError = null;
+        // Track initial blocks to detect movement
+        if (splashState.initialBlocks === null) {
+          splashState.initialBlocks = blocks;
+          console.log('[splash] Initial blocks:', blocks);
+        }
+
+        // Detect chain activity: blocks increased OR we have any blocks at all
+        // Hide splash as soon as daemon is responding with real data
+        const chainMoving = blocks > 0;
+        if (chainMoving) {
+          console.log('[splash] Chain activity detected, hiding splash');
+          splashState.validStatusReceived = true;
+          hideSplash();
+          hideConnectBanner();
+          connectionState.connected = true;
+          connectionState.attempts = 0;
+          connectionState.lastError = null;
+        } else {
+          // Have headers but no blocks yet - still warming up
+          updateSplashStatus('Connecting to daemon…');
+        }
       } else {
-        // Still warming up - update splash status
-        updateSplashStatus('Connecting to demon…');
+        // No chain data yet - still warming up
+        if (!splashState.longWaitShown) {
+          updateSplashStatus('Connecting to daemon…');
+        }
       }
     } else {
       // Splash already hidden - normal connection handling
@@ -393,11 +434,13 @@ async function refresh() {
     }
 
     // Update sync display only if we have valid data
-    if (hasValidChainData && (last.vp !== vp || last.blocks !== blocks || last.headers !== headers)) {
-      updateSyncDisplay(blocks, headers, vp);
+    // Use remoteTip as target if available, otherwise fall back to headers
+    const targetHeight = remoteTip > 0 ? remoteTip : (headers > 0 ? headers : blocks);
+    if (hasValidChainData && (last.vp !== vp || last.blocks !== blocks || last.headers !== targetHeight)) {
+      updateSyncDisplay(blocks, targetHeight, vp, remoteTip);
       last.vp = vp;
       last.blocks = blocks;
-      last.headers = headers;
+      last.headers = targetHeight;
     }
 
     setPeers(st?.peers || 0);

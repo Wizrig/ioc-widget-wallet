@@ -50,6 +50,138 @@ function getRetryDelay(attempt) {
 }
 // ===== End Connection State =====
 
+// ===== Bootstrap State (Step C5) =====
+let bootstrapState = {
+  checked: false,
+  needed: false,
+  inProgress: false,
+  completed: false,
+  error: null
+};
+
+function showBootstrapModal() {
+  const modal = $('bootstrapModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function hideBootstrapModal() {
+  const modal = $('bootstrapModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function updateBootstrapUI(status, percent, error) {
+  const statusEl = $('bootstrapStatus');
+  const barEl = $('bootstrapBar');
+  const percentEl = $('bootstrapPercent');
+  const errorEl = $('bootstrapError');
+  const actionsEl = $('bootstrapActions');
+
+  if (statusEl && status) statusEl.textContent = status;
+  if (barEl && typeof percent === 'number') barEl.style.width = percent + '%';
+  if (percentEl && typeof percent === 'number') percentEl.textContent = percent + '%';
+
+  if (error) {
+    if (errorEl) {
+      errorEl.textContent = error;
+      errorEl.classList.remove('hidden');
+    }
+    if (actionsEl) actionsEl.classList.remove('hidden');
+  } else {
+    if (errorEl) errorEl.classList.add('hidden');
+    if (actionsEl) actionsEl.classList.add('hidden');
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+async function runBootstrapFlow() {
+  if (bootstrapState.checked) return bootstrapState.needed;
+
+  try {
+    // Check if bootstrap is needed
+    const needed = await window.ioc.needsBootstrap();
+    bootstrapState.checked = true;
+    bootstrapState.needed = needed;
+
+    if (!needed) {
+      console.log('[bootstrap] Not needed, chain data exists');
+      return false;
+    }
+
+    console.log('[bootstrap] First run detected, starting bootstrap flow');
+    bootstrapState.inProgress = true;
+    showBootstrapModal();
+    updateBootstrapUI('Downloading chain data...', 0, null);
+
+    // Listen for progress events
+    window.ioc.onBootstrapProgress((progress) => {
+      const pct = progress.percent || 0;
+      const downloaded = formatBytes(progress.downloaded || 0);
+      const total = formatBytes(progress.total || 0);
+      updateBootstrapUI(`Downloading chain data... (${downloaded} / ${total})`, pct, null);
+    });
+
+    // Start download
+    const downloadResult = await window.ioc.downloadBootstrap();
+    if (!downloadResult.ok) {
+      throw new Error(downloadResult.error || 'Download failed');
+    }
+
+    // Apply bootstrap (extract + restart daemon)
+    updateBootstrapUI('Applying chain data...', 100, null);
+    const applyResult = await window.ioc.applyBootstrap();
+    if (!applyResult.ok) {
+      throw new Error(applyResult.error || 'Apply failed');
+    }
+
+    // Done
+    bootstrapState.inProgress = false;
+    bootstrapState.completed = true;
+    updateBootstrapUI('Setup complete! Starting wallet...', 100, null);
+
+    // Wait a moment then hide modal
+    await new Promise(r => setTimeout(r, 1500));
+    hideBootstrapModal();
+    return true;
+
+  } catch (err) {
+    console.error('[bootstrap] Error:', err);
+    bootstrapState.error = err.message || String(err);
+    bootstrapState.inProgress = false;
+    updateBootstrapUI('Download failed', 0, bootstrapState.error);
+    return false;
+  }
+}
+
+function setupBootstrapHandlers() {
+  const skipBtn = $('bootstrapSkip');
+  const retryBtn = $('bootstrapRetry');
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', () => {
+      console.log('[bootstrap] User skipped bootstrap, using manual sync');
+      hideBootstrapModal();
+      bootstrapState.inProgress = false;
+      // Continue to normal refresh loop
+    });
+  }
+
+  if (retryBtn) {
+    retryBtn.addEventListener('click', async () => {
+      bootstrapState.checked = false;
+      bootstrapState.error = null;
+      updateBootstrapUI('Retrying...', 0, null);
+      await runBootstrapFlow();
+    });
+  }
+}
+// ===== End Bootstrap State =====
+
 function setSync(pct, text) {
   const bar = $('syncbar');
   if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
@@ -366,10 +498,22 @@ function main() {
     });
   }
 
-  // Show initial connecting banner, then kick off refresh loop
-  connectionState.startTime = Date.now();
-  showConnectBanner('Connecting to daemon...');
-  refresh();
+  // Setup bootstrap handlers (skip/retry buttons)
+  setupBootstrapHandlers();
+
+  // Check for first-run bootstrap before starting normal refresh loop
+  (async () => {
+    try {
+      await runBootstrapFlow();
+    } catch (err) {
+      console.error('[main] Bootstrap flow error:', err);
+    }
+
+    // After bootstrap (or if not needed), show connecting banner and start refresh
+    connectionState.startTime = Date.now();
+    showConnectBanner('Connecting to daemon...');
+    refresh();
+  })();
 }
 document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){}});
 

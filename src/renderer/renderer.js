@@ -419,17 +419,20 @@ async function refresh() {
     const remoteTip = st?.remoteTip || 0;  // Network tip from explorer API
     const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : 0;
 
-    // FIX 1: BALANCE MUST DISPLAY IMMEDIATELY - before any other logic
+    // BALANCE MUST DISPLAY IMMEDIATELY - before any other logic
     // Render balance as soon as we have ANY valid response, even while syncing
+    // Do NOT gate on sync state, networkTip, or verificationProgress
     const info = st?.info || {};
-    const bal = Number(info.balance || info.walletbalance || 0);
-    // Update balance immediately on first response OR when changed
-    // Use last.bal === null to detect first render
-    if (last.bal === null || last.bal !== bal) {
-      const el = $('big-balance');
-      if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
-      last.bal = bal;
-      fitBalance();
+    const hasBalanceInfo = typeof info.balance !== 'undefined' || typeof info.walletbalance !== 'undefined';
+    if (hasBalanceInfo) {
+      const bal = Number(info.balance ?? info.walletbalance ?? 0);
+      // Update on first valid balance OR when changed
+      if (last.bal === null || last.bal !== bal) {
+        const el = $('big-balance');
+        if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
+        last.bal = bal;
+        fitBalance();
+      }
     }
 
     // Check if we have valid chain data (not 0/0)

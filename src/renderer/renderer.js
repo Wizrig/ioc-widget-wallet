@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 
-let state = { unlocked: false, peers: 0 };
+let state = { unlocked: false, peers: 0, synced: false, blocks: 0 };
 let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
@@ -226,25 +226,21 @@ function setupBootstrapHandlers() {
  * @param {number} blocks - current local block height
  * @param {number} targetHeight - network tip height (from explorer or headers)
  * @param {number} verificationProgress - 0-1 progress value (optional)
- * @param {number} remoteTip - explicit remote tip if available
+ * @param {number} remoteTip - explicit remote tip if available (used only for progress bar math)
  */
 function updateSyncDisplay(blocks, targetHeight, verificationProgress, remoteTip) {
   const bar = $('syncbar');
   const t = $('syncText');
   const wrap = document.querySelector('#tab-overview .sync-wrap');
 
-  // Don't update if we have no valid data
-  if (blocks === 0 && targetHeight === 0) {
-    return; // Keep whatever was showing, don't show 0/0
-  }
+  // A) Always store blocks in state immediately (before any conditional logic)
+  state.blocks = blocks;
 
-  // Use remoteTip as the authoritative target if available
-  const networkTip = remoteTip > 0 ? remoteTip : targetHeight;
-
-  // Calculate percentage based on local blocks vs network tip
+  // B) Calculate progress bar percentage (remoteTip can be used here for smoother pct)
+  const pctTarget = remoteTip > 0 ? remoteTip : (targetHeight > 0 ? targetHeight : 1);
   let pct;
-  if (networkTip > 0 && blocks > 0) {
-    pct = Math.round((blocks / networkTip) * 100);
+  if (pctTarget > 0 && blocks > 0) {
+    pct = Math.round((blocks / pctTarget) * 100);
   } else if (typeof verificationProgress === 'number' && verificationProgress > 0) {
     pct = Math.round(verificationProgress * 100);
   } else {
@@ -252,24 +248,25 @@ function updateSyncDisplay(blocks, targetHeight, verificationProgress, remoteTip
   }
   pct = Math.max(0, Math.min(100, pct));
 
-  // Only consider synced if we have a network tip and local blocks >= network tip
-  // Never show "Synced" if we don't have a reliable network tip
-  const hasReliableTip = remoteTip > 0;
-  const isSynced = hasReliableTip && blocks >= remoteTip;
+  // C) Synced check uses ONLY targetHeight (NOT remoteTip)
+  const isSynced = targetHeight > 0 && blocks >= targetHeight;
 
-  if (bar) {
-    bar.style.width = pct + '%';
-    bar.style.display = isSynced ? 'none' : '';
-  }
+  // Store synced state for staking icon
+  state.synced = isSynced;
 
-  if (t) {
-    if (isSynced) {
-      t.textContent = `Synced (${blocks.toLocaleString()} / ${networkTip.toLocaleString()} blocks)`;
-    } else if (networkTip > 0) {
-      t.textContent = `Syncing wallet (${blocks.toLocaleString()} / ${networkTip.toLocaleString()} blocks)`;
-    } else {
-      // No network tip available - just show local blocks, never say "Synced"
-      t.textContent = `Syncing wallet (${blocks.toLocaleString()} blocks)`;
+  if (isSynced) {
+    // When synced: hide the entire sync row (no gap left behind)
+    if (wrap) wrap.style.display = 'none';
+  } else {
+    // While NOT synced: always show the bottom sync row
+    if (wrap) wrap.style.display = '';
+    if (bar) {
+      bar.style.display = '';
+      bar.style.width = pct + '%';
+    }
+    // Text: "Syncing wallet (BLOCK)" - plain integer, no commas
+    if (t) {
+      t.textContent = `Syncing wallet (${blocks})`;
     }
   }
 
@@ -310,7 +307,15 @@ function setSync(pct, text) {
 function setPeers(n) {
   state.peers = n || 0;
   const chip = $('ic-peers');
-  if (chip) { chip.title = `Peers: ${state.peers}`; chip.classList.toggle('ok', state.peers > 0); }
+  if (chip) {
+    // Tooltip shows peers + single local block height (no commas, no network tip)
+    let tooltip = `Peers: ${state.peers}`;
+    if (state.blocks > 0) {
+      tooltip += `\nBlocks: ${state.blocks}`;
+    }
+    chip.title = tooltip;
+    chip.classList.toggle('ok', state.peers > 0);
+  }
 }
 
 function setLock(unlocked) {
@@ -325,8 +330,43 @@ function setLock(unlocked) {
   if (chip) { chip.classList.toggle('ok', state.unlocked); chip.title = state.unlocked ? 'Wallet unlocked' : 'Wallet locked'; }
 }
 
-function setStaking(on, amount) {
-  const chip = $('ic-stake'); if (chip) { chip.classList.toggle('ok', !!on); chip.title = on ? 'Staking on' : 'Staking off'; }
+function setStaking(on, amount, stakingInfo) {
+  const chip = $('ic-stake');
+  if (chip) {
+    // Staking icon is green ONLY when: unlocked AND synced AND daemon reports staking enabled
+    const isActivelyStaking = !!on && state.unlocked && state.synced;
+    chip.classList.toggle('ok', isActivelyStaking);
+
+    // Build tooltip with staking info
+    let tooltip = isActivelyStaking ? 'Staking on' : 'Staking off';
+    if (stakingInfo && typeof stakingInfo === 'object') {
+      const parts = [];
+      if (typeof stakingInfo.weight === 'number' && stakingInfo.weight > 0) {
+        parts.push(`Weight: ${stakingInfo.weight}`);
+      }
+      if (typeof stakingInfo.netstakeweight === 'number' && stakingInfo.netstakeweight > 0) {
+        parts.push(`Network: ${stakingInfo.netstakeweight}`);
+      }
+      if (typeof stakingInfo.expectedtime === 'number' && stakingInfo.expectedtime > 0) {
+        const hours = Math.round(stakingInfo.expectedtime / 3600);
+        const days = Math.round(stakingInfo.expectedtime / 86400);
+        if (days > 1) {
+          parts.push(`Expected: ~${days} days`);
+        } else if (hours > 0) {
+          parts.push(`Expected: ~${hours} hours`);
+        }
+      }
+      if (parts.length > 0) {
+        tooltip += '\n' + parts.join('\n');
+      }
+    }
+    // Show reason if daemon says staking enabled but not actively staking
+    if (on && !isActivelyStaking) {
+      if (!state.unlocked) tooltip += '\n(Wallet locked)';
+      else if (!state.synced) tooltip += '\n(Syncing)';
+    }
+    chip.title = tooltip;
+  }
   const s = $('staking'); if (s) s.textContent = on ? Number(amount || 0).toLocaleString() : '0';
 }
 
@@ -457,10 +497,10 @@ async function refresh() {
       (st?.staking && typeof st.staking.stakingbalance !== 'undefined') ? st.staking.stakingbalance : 0
     );
 
-    if (stakingOn !== last.stakeOn || stakingAmt !== last.stakeAmt) {
-      setStaking(stakingOn, stakingAmt);
-      last.stakeOn = stakingOn; last.stakeAmt = stakingAmt;
-    }
+    // Always update staking display since it depends on unlocked and synced state too
+    const stakingInfo = st?.staking || {};
+    setStaking(stakingOn, stakingAmt, stakingInfo);
+    last.stakeOn = stakingOn; last.stakeAmt = stakingAmt;
   } catch (err) {
     const elapsed = Date.now() - startTime;
     connectionFailed = true;

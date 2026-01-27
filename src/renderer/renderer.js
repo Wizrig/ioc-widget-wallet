@@ -788,9 +788,20 @@ document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLa
   function setupLiveTail(){
     var box=q('live-tail'), st=q('start-tail'), sp=q('stop-tail');
     if (!box || !st || !sp || !window.diag) return;
-    window.diag.onData(function(line){ box.textContent += line; box.scrollTop = box.scrollHeight; });
-    st.addEventListener('click', function(){ window.diag.startTail() });
-    sp.addEventListener('click', function(){ window.diag.stopTail() });
+    window.diag.onData(function(line){
+      box.classList.remove('empty');
+      box.textContent += line;
+      box.scrollTop = box.scrollHeight;
+    });
+    st.addEventListener('click', function(){
+      box.classList.remove('empty');
+      box.textContent = '';
+      window.diag.startTail();
+    });
+    sp.addEventListener('click', function(){
+      window.diag.stopTail();
+      if (!box.textContent.trim()) box.classList.add('empty');
+    });
   }
 
   function init(){ setupWalletTools(); setupLiveTail(); }

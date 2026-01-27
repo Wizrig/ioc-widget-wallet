@@ -427,8 +427,14 @@ async function refresh() {
     const hasBalance = typeof info.balance === 'number' || typeof info.walletbalance === 'number';
     if (hasBalance) {
       const bal = Number(info.balance ?? info.walletbalance);
-      // Update when changed OR on first valid balance (last.bal is null)
-      if (last.bal === null || last.bal !== bal) {
+      // NEVER overwrite a known non-zero balance with 0 (protects against stale cache/RPC gaps)
+      // Only allow 0 if: (1) first load, or (2) we already had 0, or (3) we never had a balance
+      const allowZero = last.bal === null || last.bal === 0;
+      if (bal === 0 && !allowZero && last.bal > 0) {
+        // Skip: don't flash 0 when we know user has funds
+        console.log('[balance] Ignoring 0 balance - preserving known balance:', last.bal);
+      } else if (last.bal === null || last.bal !== bal) {
+        // Update when changed OR on first valid balance (last.bal is null)
         const el = $('big-balance');
         if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
         last.bal = bal;
@@ -933,7 +939,7 @@ new MutationObserver(__ensureHistoryScroller).observe(document.documentElement,{
   function ensureStyle(){
     if(document.getElementById('accent-style')) return;
     var css = `
-:root{--accent:#20e0d0}
+:root{--accent:#33A2DA}
 .btn,.btn.primary{background:var(--accent) !important;border-color:var(--accent) !important}
 .btn:hover{filter:brightness(1.05)}
 .tab.is-active,.tab.active{box-shadow:0 0 0 2px var(--accent) inset !important}
@@ -966,7 +972,7 @@ svg [data-accent="stroke"]{stroke:var(--accent) !important}
     card.innerHTML =
       '<div class="card-title">Theme</div>' +
       '<div class="accent-row">' +
-        '<input type="color" id="accentPick" value="#2da1dd">' +
+        '<input type="color" id="accentPick" value="#33A2DA">' +
         '<button id="accentApply" class="btn">APPLY</button>' +
         '<button id="accentReset" class="btn">RESET</button>' +
       '</div>';
@@ -986,19 +992,29 @@ svg [data-accent="stroke"]{stroke:var(--accent) !important}
 
     var a = document.getElementById('accentApply');
     if(a){ a.addEventListener('click', function(){
-      var v = (document.getElementById('accentPick')||{}).value || '#2da1dd';
+      var v = (document.getElementById('accentPick')||{}).value || '#33A2DA';
       setAccent(v);
     });}
     var r = document.getElementById('accentReset');
     if(r){ r.addEventListener('click', function(){
-      setAccent('#20e0d0');
-      var p=document.getElementById('accentPick'); if(p) p.value='#20e0d0';
+      setAccent('#33A2DA');
+      var p=document.getElementById('accentPick'); if(p) p.value='#33A2DA';
     });}
   }
 
+  // Known teal colors that must be overridden to IOCoin blue
+  var TEAL_OVERRIDES = ['#20e0d0','#1fe0d0','#21dfd0','#20dfcf','#22e1d1','#2ae2d4','#14e1d0','#24e0d1','#23e0d1','#1fd6c1','#2da1dd','#00b3a0'];
+  var IOCOIN_BLUE = '#33A2DA';
+
   function init(){
     ensureStyle();
-    var saved = getAccent(); if(saved) setAccent(saved);
+    var saved = getAccent();
+    // ALWAYS force IOCoin blue on boot - no exceptions
+    // This ensures no stale teal can ever reappear from localStorage
+    setAccent(IOCOIN_BLUE);
+    // Update picker to match if it exists
+    var p = document.getElementById('accentPick');
+    if (p) p.value = IOCOIN_BLUE;
   }
 
   if(document.readyState==='loading'){

@@ -801,9 +801,9 @@ document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLa
 function __ioc_modal(opts){
   return new Promise(function(res){
     var wrap=document.createElement('div');wrap.style.position='fixed';wrap.style.inset='0';wrap.style.background='rgba(0,0,0,.45)';wrap.style.display='flex';wrap.style.alignItems='center';wrap.style.justifyContent='center';wrap.style.zIndex='9999';
-    var box=document.createElement('div');box.style.background='#0e141b';box.style.border='1px solid #12343b';box.style.borderRadius='12px';box.style.padding='16px 18px';box.style.minWidth='340px';box.style.boxShadow='0 10px 30px rgba(0,0,0,.45)';
-    var h=document.createElement('div');h.textContent=opts&&opts.title?opts.title:'Input';h.style.color='#cbd5df';h.style.fontWeight='600';h.style.margin='0 0 10px';h.style.textAlign='center';
-    var inp=document.createElement('input');inp.type=(opts&&opts.type)||'text';inp.placeholder=(opts&&opts.placeholder)||'';inp.value=(opts&&opts.value)||'';inp.style.width='100%';inp.style.padding='10px';inp.style.borderRadius='8px';inp.style.border='1px solid #243541';inp.style.background='#0b1117';inp.style.color='#e6f2f1';
+    var box=document.createElement('div');box.style.background='#0B1A33';box.style.border='1px solid #1A3352';box.style.borderRadius='12px';box.style.padding='16px 18px';box.style.minWidth='340px';box.style.boxShadow='0 10px 30px rgba(0,0,0,.55)';
+    var h=document.createElement('div');h.textContent=opts&&opts.title?opts.title:'Input';h.style.color='#d9e5ea';h.style.fontWeight='600';h.style.margin='0 0 10px';h.style.textAlign='center';
+    var inp=document.createElement('input');inp.type=(opts&&opts.type)||'text';inp.placeholder=(opts&&opts.placeholder)||'';inp.value=(opts&&opts.value)||'';inp.style.width='100%';inp.style.padding='10px';inp.style.borderRadius='8px';inp.style.border='1px solid #1A3352';inp.style.background='#040C1A';inp.style.color='#d9e5ea';
     var row=document.createElement('div');row.style.display='flex';row.style.gap='10px';row.style.marginTop='12px';row.style.justifyContent='center';
     var ok=document.createElement('button');ok.textContent='OK';ok.className='btn';
     var ca=document.createElement('button');ca.textContent='Cancel';ca.className='btn';
@@ -947,7 +947,7 @@ new MutationObserver(__ensureHistoryScroller).observe(document.documentElement,{
 #syncbar{background:var(--accent) !important}
 svg [data-accent="fill"]{fill:var(--accent) !important}
 svg [data-accent="stroke"]{stroke:var(--accent) !important}
-#accentPick{width:44px;height:32px;border:1px solid var(--border,#293442);border-radius:6px;background:#0e1420;padding:0}
+#accentPick{width:44px;height:32px;border:1px solid var(--border,#1A3352);border-radius:6px;background:#040C1A;padding:0}
 .accent-row{display:flex;gap:10px;align-items:center;margin-top:8px}
 .theme-card{margin-top:14px}
 .theme-card .card-title{font-weight:600;margin-bottom:8px}
@@ -1805,7 +1805,7 @@ async function loadHistory() {
     hdr.style.top = '0';
     hdr.style.zIndex = '1000';
     if (!getComputedStyle(hdr).backgroundColor || getComputedStyle(hdr).backgroundColor==='rgba(0, 0, 0, 0)'){
-      hdr.style.background = 'var(--bg, #0b0b0b)';
+      hdr.style.background = 'var(--bg, #040C1A)';
     }
 
     const h = Math.ceil(hdr.getBoundingClientRect().height) || 64;
@@ -1899,7 +1899,7 @@ async function loadHistory() {
     // Ensure header paints solid background (avoid transparency over content)
     const bg = getComputedStyle(hdr).backgroundColor;
     if (!bg || bg === 'rgba(0, 0, 0, 0)') {
-      hdr.style.setProperty('--hdr-bg', '#0b0b0b');
+      hdr.style.setProperty('--hdr-bg', '#040C1A');
     }
 
     const region = pickScrollRegion(hdr);
@@ -2023,7 +2023,7 @@ async function loadHistory() {
     // Ensure header has a solid background behind it
     const bg = getComputedStyle(hdr).backgroundColor;
     if (!bg || bg === 'rgba(0, 0, 0, 0)') {
-      hdr.style.setProperty('--hdr-bg', '#0b0b0b');
+      hdr.style.setProperty('--hdr-bg', '#040C1A');
     }
 
     const root = pickContentRoot(hdr);
@@ -2057,7 +2057,7 @@ async function loadHistory() {
     hdr.style.zIndex = '1000';
     // ensure it paints (avoid transparent overlap)
     const bg = getComputedStyle(hdr).backgroundColor;
-    if (!bg || bg === 'rgba(0, 0, 0, 0)') hdr.style.background = '#0b0b0b';
+    if (!bg || bg === 'rgba(0, 0, 0, 0)') hdr.style.background = '#040C1A';
   }
 
   function ensureScrollContainer(hdr){
@@ -2132,7 +2132,7 @@ async function loadHistory() {
     hdr.style.top = '0';
     hdr.style.zIndex = '1000';
     const bg = getComputedStyle(hdr).backgroundColor;
-    if (!bg || bg === 'rgba(0, 0, 0, 0)') hdr.style.background = '#0b0b0b';
+    if (!bg || bg === 'rgba(0, 0, 0, 0)') hdr.style.background = '#040C1A';
   }
 
   function ensureScrollContainer(pane){
@@ -2701,11 +2701,11 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
         letterSpacing: '0.3px'
       });
 
-      // Card aesthetics to match other inner cards
+      // Card aesthetics to match other inner cards - dark blue theme
       Object.assign(card.style, {
         borderRadius: '18px',
-        background: 'rgba(10, 18, 23, 0.65)',
-        boxShadow: 'inset 0 0 0 1px rgba(94,141,146,0.08), 0 10px 24px rgba(0,0,0,0.28)',
+        background: 'rgba(11, 26, 51, 0.85)',
+        boxShadow: 'inset 0 0 0 1px rgba(26,51,82,0.3), 0 10px 24px rgba(0,0,0,0.35)',
         padding: '18px 22px 24px'
       });
 
@@ -2726,14 +2726,14 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
       row.appendChild(color);
       row.appendChild(resetBtn);
 
-      // Style the color picker like a small control chip
+      // Style the color picker like a small control chip - dark blue theme
       Object.assign(color.style, {
         width: '56px',
         height: '32px',
-        border: '1px solid rgba(94,141,146,0.35)',
+        border: '1px solid rgba(26,51,82,0.5)',
         borderRadius: '10px',
-        background: '#0b1d22',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 2px rgba(0,0,0,0.25)',
+        background: '#122844',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.3)',
         padding: '0',
         cursor: 'pointer'
       });
@@ -2765,21 +2765,21 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
     if (document.getElementById(STYLE_ID)) return;
     const st = document.createElement('style'); st.id = STYLE_ID;
     st.textContent = `
-      /* Card shell (match Wallet Tools look) */
+      /* Card shell (match Wallet Tools look) - dark blue theme */
       .card.theme-card{
-        background: #0f1a20;
+        background: #0B1A33;
         border-radius: 20px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 18px 28px rgba(0,0,0,0.35);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 18px 28px rgba(0,0,0,0.4);
         padding: 22px 22px 26px;
         margin: 24px 18px 28px;
       }
       .theme-card .card-inner{
-        background: #0b161c;
+        background: #0F223D;
         border-radius: 16px;
         padding: 22px;
       }
       .theme-card .card-title{
-        color: #cfe8ee;
+        color: #d9e5ea;
         text-align: center;
         font-weight: 700;
         letter-spacing: .2px;
@@ -2794,8 +2794,8 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
       .theme-card input[type="color"]{
         -webkit-appearance: none; appearance: none;
         width: 58px; height: 34px;
-        border-radius: 10px; border: 2px solid #23343c;
-        background: var(--accent,#17b9d4); padding:0; cursor:pointer;
+        border-radius: 10px; border: 2px solid #1A3352;
+        background: var(--accent,#33A2DA); padding:0; cursor:pointer;
       }
       .theme-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
       .theme-card input[type="color"]::-webkit-color-swatch{

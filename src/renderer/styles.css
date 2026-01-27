@@ -1,6 +1,19 @@
 :root{
-  --bg:#0f171c;--panel:#1c2a31;--panel2:#18242a;--ink:#d9e5ea;--muted:#9fb3bd;
-  --accent:#33A2DA;--chip:#15343a;--ok:#33A2DA;--danger:#ff6b6b;
+  /* IOCoin Dark Blue Theme - no teal, no green-gray */
+  --bg:#040C1A;           /* Deep navy window background */
+  --panel:#0B1A33;        /* Dark blue pane background */
+  --panel2:#0F223D;       /* Slightly lighter card/inner panel */
+  --card:#122844;         /* Card backgrounds, rows */
+  --card-hover:#163055;   /* Hover state for cards/rows */
+  --ink:#d9e5ea;          /* Primary text */
+  --muted:#8BA3C1;        /* Muted blue-tinted text (not gray) */
+  --icon-inactive:#5A7A9E;/* Inactive icons - muted blue */
+  --border:#1A3352;       /* Blue-tinted borders */
+  --border-subtle:#0E2240;/* Subtle dividers */
+  --accent:#33A2DA;       /* IOCoin blue highlight */
+  --chip:#122844;         /* Chip background */
+  --ok:#33A2DA;           /* Success/active state */
+  --danger:#ff6b6b;       /* Error state */
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -15,13 +28,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 .chip.ok{outline:2px solid var(--ok)}
 .chip svg{width:18px;height:18px;fill:#fff;opacity:.95}
 .bars{display:flex;gap:3px;align-items:flex-end}
-.bars span{width:3px;height:8px;background:#6b7f88;border-radius:2px}
+.bars span{width:3px;height:8px;background:var(--icon-inactive);border-radius:2px}
 #ic-peers.ok .bars span{background:var(--ok)}
 .bars span:nth-child(2){height:12px}.bars span:nth-child(3){height:16px}.bars span:nth-child(4){height:20px}
 
 /* Tabs */
 .tabs{display:flex;gap:14px;padding:6px 16px 10px 16px;border-bottom:2px solid var(--accent)}
-.tab{background:#0f1f24;border:1px solid rgba(255,255,255,.08);color:var(--ink);padding:8px 14px;border-radius:18px}
+.tab{background:var(--panel);border:1px solid var(--border);color:var(--ink);padding:8px 14px;border-radius:18px}
 .tab.active{outline:2px solid var(--accent)}
 
 /* Panels */
@@ -30,7 +43,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 .panel-inner{background:var(--panel2);border-radius:12px;padding:24px;text-align:center}
 .h3{font-weight:700;letter-spacing:.5px;margin-bottom:12px;opacity:.9}
 
-#bignum{background:#141f25;border-radius:14px;padding:22px;display:flex;justify-content:center;align-items:center;margin:16px auto}
+#bignum{background:var(--card);border-radius:14px;padding:22px;display:flex;justify-content:center;align-items:center;margin:16px auto}
 #big-balance{font-weight:800;font-size:72px;letter-spacing:1px;color:#d2dde2}
 .stake-line{margin:10px 0 14px 0;color:var(--muted);text-align:center}
 
@@ -40,36 +53,38 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 /* Sync bar */
 .sync-wrap{padding:10px 4px}
 #syncText{color:var(--muted);font-size:13px;margin:4px 4px 8px 4px;text-align:center}
-.progress{height:10px;background:#0f1f24;border-radius:10px;padding:2px}
+.progress{height:10px;background:var(--border-subtle);border-radius:10px;padding:2px}
 #syncbar{height:6px;width:0%;background:var(--accent);border-radius:8px;transition:width .3s ease}
 
 /* Address book */
 .address-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .tx{width:100%;border-collapse:collapse}
-.tx th,.tx td{padding:8px;border-bottom:1px solid rgba(255,255,255,.05)}
+.tx th,.tx td{padding:8px;border-bottom:1px solid var(--border-subtle)}
 .addr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-.addr-card{background:#142228;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;text-align:left}
-.addr-card .label{color:#aac3cc;margin-bottom:6px;font-weight:600}
-.addr-card .addr{font-family:ui-monospace,Menlo,monospace;word-break:break-all;color:#e8f3f7}
+.addr-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:left;transition:background .15s ease}
+.addr-card:hover{background:var(--card-hover)}
+.addr-card .label{color:var(--muted);margin-bottom:6px;font-weight:600}
+.addr-card .addr{font-family:ui-monospace,Menlo,monospace;word-break:break-all;color:var(--ink)}
 
 /* Buttons & modals */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
-.sheet{width:420px;max-width:92vw;background:#0f1f24;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.sheet{width:420px;max-width:92vw;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
 .title2{font-weight:800;margin-bottom:10px}
-.sheet input{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0b151a;color:var(--ink);margin-top:8px}
+.sheet input{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--ink);margin-top:8px}
 .row{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
-.btn{background:#21323a;border:1px solid rgba(255,255,255,.12);color:var(--ink);padding:8px 14px;border-radius:10px;cursor:pointer}
+.btn{background:var(--card);border:1px solid var(--border);color:var(--ink);padding:8px 14px;border-radius:10px;cursor:pointer;transition:background .15s ease}
+.btn:hover{background:var(--card-hover)}
 .btn-ok{background:var(--accent);color:#fff}
 .btn.sm{padding:6px 10px;border-radius:8px;font-size:13px}
 .err{color:var(--danger);min-height:18px;margin-top:6px}
-.newaddr-result{margin-top:8px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;background:#111b20;border:1px dashed rgba(255,255,255,.15);padding:8px;border-radius:8px}
+.newaddr-result{margin-top:8px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;background:var(--bg);border:1px dashed var(--border);padding:8px;border-radius:8px}
 
 .tool-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px
   display: flex;
   justify-content: center;
   gap: 10px;
 }
-.live-tail{width:100%;height:300px;overflow-y:auto;background:#0b1020;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px;color:var(--text);white-space:pre-wrap;margin-top:12px}
+.live-tail{width:100%;height:300px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px;color:var(--ink);white-space:pre-wrap;margin-top:12px}
 .diag-actions{margin-top:12px;display:flex;gap:10px;justify-content:center}
 
 .wallet-tools { margin-bottom: 20px; }
@@ -94,7 +109,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   display: block;
 }
 .chrome .chips .chip svg path {
-  fill: #d7e0e5;
+  fill: var(--icon-inactive);
 }
 .chrome .chips .chip.ok svg path {
   fill: var(--accent);
@@ -196,23 +211,23 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 #tab-overview .cta { margin-top: 12px !important; }
 #tab-overview .sync-wrap { padding: 8px 4px !important; margin-top: 10px !important; }
 
-/* Dark scrollbars (prevents white scrollbar look) */
-#tab-overview * { scrollbar-color: #2b3a44 #0f171c; }
+/* Dark blue scrollbars */
+#tab-overview * { scrollbar-color: var(--card) var(--bg); }
 #tab-overview::-webkit-scrollbar,
 #tab-overview *::-webkit-scrollbar { width: 10px; height: 10px; }
 #tab-overview::-webkit-scrollbar-track,
-#tab-overview *::-webkit-scrollbar-track { background: #0f171c; }
+#tab-overview *::-webkit-scrollbar-track { background: var(--bg); }
 #tab-overview::-webkit-scrollbar-thumb,
 #tab-overview *::-webkit-scrollbar-thumb {
-  background: #2b3a44;
+  background: var(--card);
   border-radius: 10px;
-  border: 2px solid #0f171c;
+  border: 2px solid var(--bg);
 }
 
 
 /* ===== Connection Banner (Step B3) ===== */
 .connect-banner {
-  background: linear-gradient(135deg, #1a2830 0%, #0f1f24 100%);
+  background: linear-gradient(135deg, var(--panel2) 0%, var(--panel) 100%);
   border: 1px solid rgba(255, 180, 0, 0.3);
   border-radius: 12px;
   padding: 16px 20px;
@@ -221,7 +236,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 }
 .connect-banner.error {
   border-color: var(--danger);
-  background: linear-gradient(135deg, #2a1a1a 0%, #1f1414 100%);
+  background: linear-gradient(135deg, #2A1525 0%, #1A0F18 100%);
 }
 .connect-inner {
   display: flex;
@@ -267,7 +282,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 }
 .bootstrap-progress {
   height: 12px;
-  background: #0b151a;
+  background: var(--border-subtle);
   border-radius: 10px;
   padding: 2px;
   margin: 12px 0;
@@ -324,7 +339,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 .splash-progress {
   width: 200px;
   height: 6px;
-  background: #0b151a;
+  background: var(--border-subtle);
   border-radius: 6px;
   overflow: hidden;
   margin: 0 auto;
@@ -342,3 +357,36 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   100% { transform: translateX(-100%); }
 }
 /* ===== End Splash Overlay ===== */
+
+/* ===== Global Dark Blue Scrollbars ===== */
+* { scrollbar-color: var(--card) var(--bg); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--card);
+  border-radius: 10px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--card-hover); }
+
+/* ===== Table Row Hover States ===== */
+.tx tbody tr { transition: background .15s ease; }
+.tx tbody tr:hover { background: var(--card); }
+
+/* ===== History Table Dark Blue ===== */
+#tab-history .panel-inner { background: var(--panel2); }
+#tab-history table thead { background: var(--panel); }
+#tab-history table tbody tr { transition: background .15s ease; }
+#tab-history table tbody tr:hover { background: var(--card); }
+
+/* ===== Settings Pane Dark Blue ===== */
+#tab-settings .panel { background: var(--panel); }
+#tab-settings .panel-inner { background: var(--panel2); }
+
+/* ===== Address Book Dark Blue ===== */
+#tab-address .panel { background: var(--panel); }
+#tab-address .panel-inner { background: var(--panel2); }
+
+/* ===== DIONS Pane Dark Blue ===== */
+#tab-dions .panel { background: var(--panel); }
+#tab-dions .panel-inner { background: var(--panel2); }

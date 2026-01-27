@@ -421,15 +421,19 @@ async function refresh() {
 
     // BALANCE MUST DISPLAY IMMEDIATELY - before any other logic
     // Render as soon as first wallet RPC responds, even while syncing
-    // Do NOT gate on synced, networkTip, or any "wallet loaded" condition
+    // Do NOT gate on synced, networkTip, or verification progress
     const info = st?.info || {};
-    const bal = Number(info.balance ?? info.walletbalance ?? 0);
-    // Update balance when changed (or on first render when last.bal is null)
-    if (last.bal === null || last.bal !== bal) {
-      const el = $('big-balance');
-      if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
-      last.bal = bal;
-      fitBalance();
+    // Only update if we have actual balance data from RPC (not defaulted 0)
+    const hasBalance = typeof info.balance === 'number' || typeof info.walletbalance === 'number';
+    if (hasBalance) {
+      const bal = Number(info.balance ?? info.walletbalance);
+      // Update when changed OR on first valid balance (last.bal is null)
+      if (last.bal === null || last.bal !== bal) {
+        const el = $('big-balance');
+        if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
+        last.bal = bal;
+        fitBalance();
+      }
     }
 
     // Check if we have valid chain data (not 0/0)

@@ -419,6 +419,19 @@ async function refresh() {
     const remoteTip = st?.remoteTip || 0;  // Network tip from explorer API
     const vp = typeof st?.chain?.verificationprogress === 'number' ? st.chain.verificationprogress : 0;
 
+    // FIX 1: BALANCE MUST DISPLAY IMMEDIATELY - before any other logic
+    // Render balance as soon as we have ANY valid response, even while syncing
+    const info = st?.info || {};
+    const bal = Number(info.balance || info.walletbalance || 0);
+    // Update balance immediately on first response OR when changed
+    // Use last.bal === null to detect first render
+    if (last.bal === null || last.bal !== bal) {
+      const el = $('big-balance');
+      if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
+      last.bal = bal;
+      fitBalance();
+    }
+
     // Check if we have valid chain data (not 0/0)
     const hasValidChainData = blocks > 0 || headers > 0;
 
@@ -462,15 +475,6 @@ async function refresh() {
         connectionState.attempts = 0;
         connectionState.lastError = null;
       }
-    }
-
-    const info = st?.info || {};
-    const bal = Number(info.balance || info.walletbalance || 0);
-
-    if (last.bal !== bal) {
-      const el = $('big-balance');
-      if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
-      last.bal = bal; fitBalance();
     }
 
     // Update sync display only if we have valid data

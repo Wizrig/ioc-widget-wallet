@@ -97,7 +97,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   fill: #d7e0e5;
 }
 .chrome .chips .chip.ok svg path {
-  fill: #18dad0;
+  fill: var(--teal);
 }
 
 .chrome{-webkit-app-region:drag}

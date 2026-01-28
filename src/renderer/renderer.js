@@ -11,8 +11,14 @@ let splashState = {
   validStatusReceived: false,
   startTime: Date.now(),
   initialBlocks: null,  // Track initial blocks to detect movement
-  longWaitShown: false
+  longWaitShown: false,
+  syncStartTime: null,  // When sync phase started (for ETA calculation)
+  syncStartBlocks: null, // Blocks when sync phase started
+  phase: 'connecting'   // 'connecting' | 'downloading' | 'installing' | 'syncing'
 };
+
+// Constants for splash behavior
+const SPLASH_BLOCKS_THRESHOLD = 25; // Hide splash when within this many blocks of tip
 
 function showSplash(text) {
   const overlay = $('splashOverlay');
@@ -38,11 +44,73 @@ function updateSplashStatus(text) {
 // Check if splash should show "this may take a few minutes" message
 function checkSplashLongWait() {
   if (!splashState.visible || splashState.longWaitShown) return;
+  if (splashState.phase !== 'connecting') return; // Only for connecting phase
   const elapsed = Date.now() - splashState.startTime;
   if (elapsed > 8000) { // 8 seconds threshold
     splashState.longWaitShown = true;
     updateSplashStatus('Connecting to daemon… this may take a few minutes');
   }
+}
+
+/**
+ * Update splash with sync progress and ETA.
+ * @param {number} blocks - current block height
+ * @param {number} targetHeight - network tip height
+ */
+function updateSplashSyncStatus(blocks, targetHeight) {
+  if (!splashState.visible || splashState.phase !== 'syncing') return;
+
+  const blocksRemaining = targetHeight - blocks;
+  let statusText = `Syncing blocks… ${blocks.toLocaleString()}`;
+
+  // Calculate ETA if we have sync start data
+  if (splashState.syncStartTime && splashState.syncStartBlocks !== null) {
+    const elapsedMs = Date.now() - splashState.syncStartTime;
+    const blocksSynced = blocks - splashState.syncStartBlocks;
+
+    if (blocksSynced > 10 && elapsedMs > 5000) {
+      // Calculate blocks per second and ETA
+      const blocksPerSec = blocksSynced / (elapsedMs / 1000);
+      if (blocksPerSec > 0) {
+        const secondsRemaining = blocksRemaining / blocksPerSec;
+        const etaText = formatETA(secondsRemaining);
+        statusText = `Syncing blocks… ${blocks.toLocaleString()} (~${etaText} remaining)`;
+      }
+    }
+  }
+
+  updateSplashStatus(statusText);
+
+  // Update progress bar if deterministic progress is possible
+  const splashBar = document.querySelector('.splash-bar');
+  if (splashBar && targetHeight > 0 && blocks > 0) {
+    const pct = Math.min(100, Math.round((blocks / targetHeight) * 100));
+    splashBar.style.width = pct + '%';
+    splashBar.style.animation = 'none'; // Stop indeterminate animation
+  }
+}
+
+/**
+ * Format seconds into human-readable ETA.
+ */
+function formatETA(seconds) {
+  if (seconds < 60) return 'less than a minute';
+  if (seconds < 120) return '~1 minute';
+  if (seconds < 3600) return `~${Math.round(seconds / 60)} minutes`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.round((seconds % 3600) / 60);
+  if (hours === 1) return mins > 0 ? `~1 hour ${mins} min` : '~1 hour';
+  return mins > 0 ? `~${hours} hours ${mins} min` : `~${hours} hours`;
+}
+
+/**
+ * Start the syncing phase of splash screen.
+ */
+function startSplashSyncPhase(blocks) {
+  splashState.phase = 'syncing';
+  splashState.syncStartTime = Date.now();
+  splashState.syncStartBlocks = blocks;
+  console.log('[splash] Started sync phase at block:', blocks);
 }
 // ===== End Splash State =====
 
@@ -156,6 +224,11 @@ async function runBootstrapFlow() {
 
     console.log('[bootstrap] First run detected, starting bootstrap flow');
     bootstrapState.inProgress = true;
+
+    // Update splash to show downloading phase
+    splashState.phase = 'downloading';
+    updateSplashStatus('Downloading bootstrap…');
+
     showBootstrapModal();
     updateBootstrapUI('Downloading chain data...', 0, null);
 
@@ -165,6 +238,8 @@ async function runBootstrapFlow() {
       const downloaded = formatBytes(progress.downloaded || 0);
       const total = formatBytes(progress.total || 0);
       updateBootstrapUI(`Downloading chain data... (${downloaded} / ${total})`, pct, null);
+      // Also update splash status
+      updateSplashStatus(`Downloading bootstrap… ${pct}%`);
     });
 
     // Start download
@@ -174,16 +249,23 @@ async function runBootstrapFlow() {
     }
 
     // Apply bootstrap (extract + restart daemon)
-    updateBootstrapUI('Applying chain data...', 100, null);
+    splashState.phase = 'installing';
+    updateSplashStatus('Installing bootstrap…');
+    updateBootstrapUI('Installing chain data...', 100, null);
+
     const applyResult = await window.ioc.applyBootstrap();
     if (!applyResult.ok) {
       throw new Error(applyResult.error || 'Apply failed');
     }
 
-    // Done
+    // Done with bootstrap - transition to syncing phase
     bootstrapState.inProgress = false;
     bootstrapState.completed = true;
-    updateBootstrapUI('Setup complete! Starting wallet...', 100, null);
+    updateBootstrapUI('Setup complete! Syncing blocks...', 100, null);
+
+    // Update splash for sync phase
+    splashState.phase = 'connecting'; // Will transition to 'syncing' when blocks come in
+    updateSplashStatus('Starting sync…');
 
     // Wait a moment then hide modal
     await new Promise(r => setTimeout(r, 1500));
@@ -194,6 +276,7 @@ async function runBootstrapFlow() {
     console.error('[bootstrap] Error:', err);
     bootstrapState.error = err.message || String(err);
     bootstrapState.inProgress = false;
+    splashState.phase = 'connecting';
     updateBootstrapUI('Download failed', 0, bootstrapState.error);
     return false;
   }
@@ -447,7 +530,7 @@ async function refresh() {
     // Check if we have valid chain data (not 0/0)
     const hasValidChainData = blocks > 0 || headers > 0;
 
-    // Handle splash visibility - hide as soon as chain activity is detected
+    // Handle splash visibility - wait until within 25 blocks of network tip
     if (splashState.visible) {
       // Check if we should show "this may take a few minutes"
       checkSplashLongWait();
@@ -459,17 +542,33 @@ async function refresh() {
           console.log('[splash] Initial blocks:', blocks);
         }
 
-        // Detect chain activity: blocks increased OR we have any blocks at all
-        // Hide splash as soon as daemon is responding with real data
-        const chainMoving = blocks > 0;
-        if (chainMoving) {
-          console.log('[splash] Chain activity detected, hiding splash');
+        // Use remoteTip (from explorer) as authoritative network height
+        const networkTip = remoteTip > 0 ? remoteTip : headers;
+        const blocksRemaining = networkTip > 0 ? networkTip - blocks : 0;
+
+        // Determine if we're close enough to hide splash
+        const closeEnough = networkTip > 0 && blocksRemaining <= SPLASH_BLOCKS_THRESHOLD;
+
+        if (closeEnough) {
+          // Within 25 blocks of tip - hide splash and show wallet
+          console.log(`[splash] Within ${SPLASH_BLOCKS_THRESHOLD} blocks of tip (${blocksRemaining} remaining), hiding splash`);
           splashState.validStatusReceived = true;
           hideSplash();
           hideConnectBanner();
           connectionState.connected = true;
           connectionState.attempts = 0;
           connectionState.lastError = null;
+        } else if (blocks > 0) {
+          // Have blocks but still syncing - show sync progress in splash
+          if (splashState.phase === 'connecting') {
+            // Transition from connecting to syncing phase
+            startSplashSyncPhase(blocks);
+          }
+          // Update splash with sync progress and ETA
+          updateSplashSyncStatus(blocks, networkTip);
+          // Mark as connected (daemon is responding)
+          connectionState.connected = true;
+          connectionState.attempts = 0;
         } else {
           // Have headers but no blocks yet - still warming up
           updateSplashStatus('Connecting to daemon…');

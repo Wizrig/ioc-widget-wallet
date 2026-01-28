@@ -1,16 +1,23 @@
 /**
  * Bootstrap module for first-run chain data download.
  * Downloads and extracts bootstrap.zip to speed up initial sync.
+ *
+ * IMPORTANT: Downloads to temp folder (not DATA_DIR) to avoid corruption.
+ * Bootstrap contains: blk0001.dat, blk0002.dat, txleveldb/
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const https = require('node:https');
 const { createWriteStream, createReadStream } = require('node:fs');
 const { pipeline } = require('node:stream/promises');
 const { DATA_DIR, CONF_PATH, isFirstRun } = require('../shared/constants');
 
 const BOOTSTRAP_URL = 'https://iocbootstrap.s3.us-east-2.amazonaws.com/bootstrap.zip';
-const BOOTSTRAP_ZIP_PATH = path.join(DATA_DIR, 'bootstrap.zip');
+// Download to temp folder to avoid corrupting wallet data
+const BOOTSTRAP_TEMP_DIR = path.join(os.tmpdir(), 'ioc-bootstrap');
+const BOOTSTRAP_ZIP_PATH = path.join(BOOTSTRAP_TEMP_DIR, 'bootstrap.zip');
+const BOOTSTRAP_EXTRACT_DIR = path.join(BOOTSTRAP_TEMP_DIR, 'extracted');
 
 /**
  * Check if bootstrap is needed.
@@ -64,14 +71,15 @@ function hasBootstrapZip() {
 
 /**
  * Download bootstrap.zip with progress callback.
+ * Downloads to temp folder to avoid corrupting wallet during download.
  * @param {Function} onProgress - Called with { downloaded, total, percent }
  * @returns {Promise<{ok: boolean, path?: string, error?: string}>}
  */
 function downloadBootstrap(onProgress) {
   return new Promise((resolve) => {
-    // Ensure data dir exists
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    // Ensure temp dir exists (NOT data dir - we download to temp first)
+    if (!fs.existsSync(BOOTSTRAP_TEMP_DIR)) {
+      fs.mkdirSync(BOOTSTRAP_TEMP_DIR, { recursive: true });
     }
 
     const file = createWriteStream(BOOTSTRAP_ZIP_PATH);
@@ -137,8 +145,7 @@ function downloadBootstrap(onProgress) {
 }
 
 /**
- * Extract bootstrap.zip to DATA_DIR.
- * Uses Node.js built-in zlib for .zip extraction.
+ * Extract bootstrap.zip to temp folder first.
  * @returns {Promise<{ok: boolean, error?: string}>}
  */
 async function extractBootstrap() {
@@ -147,19 +154,23 @@ async function extractBootstrap() {
   }
 
   try {
-    // We need to use a simple unzip approach
-    // Node.js doesn't have built-in zip extraction, so we'll use the unzip command
     const { execFile } = require('node:child_process');
 
+    // Clean and create extract directory
+    if (fs.existsSync(BOOTSTRAP_EXTRACT_DIR)) {
+      fs.rmSync(BOOTSTRAP_EXTRACT_DIR, { recursive: true, force: true });
+    }
+    fs.mkdirSync(BOOTSTRAP_EXTRACT_DIR, { recursive: true });
+
     return new Promise((resolve) => {
-      // Use system unzip command (available on macOS, Linux, and Windows with Git Bash)
-      const unzipArgs = ['-o', BOOTSTRAP_ZIP_PATH, '-d', DATA_DIR];
+      // Extract to temp folder first
+      const unzipArgs = ['-o', BOOTSTRAP_ZIP_PATH, '-d', BOOTSTRAP_EXTRACT_DIR];
 
       execFile('unzip', unzipArgs, { timeout: 600000 }, (err, stdout, stderr) => {
         if (err) {
           // Try ditto on macOS as fallback
           if (process.platform === 'darwin') {
-            execFile('ditto', ['-xk', BOOTSTRAP_ZIP_PATH, DATA_DIR], { timeout: 600000 }, (err2) => {
+            execFile('ditto', ['-xk', BOOTSTRAP_ZIP_PATH, BOOTSTRAP_EXTRACT_DIR], { timeout: 600000 }, (err2) => {
               if (err2) {
                 resolve({ ok: false, error: `Extract failed: ${err2.message}` });
               } else {
@@ -180,12 +191,76 @@ async function extractBootstrap() {
 }
 
 /**
- * Clean up downloaded bootstrap zip file.
+ * Copy extracted bootstrap files to DATA_DIR.
+ * Replaces existing blk*.dat and txleveldb/ files.
+ * MUST be called AFTER daemon is stopped!
+ * @returns {Promise<{ok: boolean, error?: string}>}
+ */
+async function applyBootstrapFiles() {
+  try {
+    // Ensure DATA_DIR exists
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+
+    // Delete existing chain data files in DATA_DIR
+    const filesToDelete = ['blk0001.dat', 'blk0002.dat', 'txleveldb'];
+    for (const file of filesToDelete) {
+      const filePath = path.join(DATA_DIR, file);
+      if (fs.existsSync(filePath)) {
+        console.log(`[bootstrap] Removing old ${file}`);
+        fs.rmSync(filePath, { recursive: true, force: true });
+      }
+    }
+
+    // Copy new files from extracted folder
+    const extractedFiles = fs.readdirSync(BOOTSTRAP_EXTRACT_DIR);
+    for (const file of extractedFiles) {
+      const srcPath = path.join(BOOTSTRAP_EXTRACT_DIR, file);
+      const destPath = path.join(DATA_DIR, file);
+
+      // Only copy chain data files (blk*.dat and txleveldb)
+      if (/^blk\d+\.dat$/i.test(file) || file === 'txleveldb') {
+        console.log(`[bootstrap] Copying ${file} to DATA_DIR`);
+        if (fs.statSync(srcPath).isDirectory()) {
+          // Copy directory recursively
+          copyDirSync(srcPath, destPath);
+        } else {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    }
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Recursively copy directory.
+ */
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/**
+ * Clean up all bootstrap temp files (zip and extracted folder).
  */
 function cleanupBootstrap() {
   try {
-    if (fs.existsSync(BOOTSTRAP_ZIP_PATH)) {
-      fs.unlinkSync(BOOTSTRAP_ZIP_PATH);
+    if (fs.existsSync(BOOTSTRAP_TEMP_DIR)) {
+      fs.rmSync(BOOTSTRAP_TEMP_DIR, { recursive: true, force: true });
     }
     return { ok: true };
   } catch (err) {
@@ -200,12 +275,21 @@ function getBootstrapZipPath() {
   return BOOTSTRAP_ZIP_PATH;
 }
 
+/**
+ * Get bootstrap extract directory path.
+ */
+function getBootstrapExtractDir() {
+  return BOOTSTRAP_EXTRACT_DIR;
+}
+
 module.exports = {
   BOOTSTRAP_URL,
   needsBootstrap,
   hasBootstrapZip,
   downloadBootstrap,
   extractBootstrap,
+  applyBootstrapFiles,
   cleanupBootstrap,
-  getBootstrapZipPath
+  getBootstrapZipPath,
+  getBootstrapExtractDir
 };

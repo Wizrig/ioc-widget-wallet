@@ -177,37 +177,62 @@ ipcMain.handle('ioc:downloadBootstrap', async (event) => {
 });
 
 ipcMain.handle('ioc:applyBootstrap', async () => {
-  // 1. Extract the bootstrap
-  const extractResult = await bootstrap.extractBootstrap();
-  if (!extractResult.ok) {
-    return extractResult;
-  }
+  const { stopViaCli, startDetached, findDaemonBinary, findCliBinary, isDaemonRunning } = require('./daemon');
 
-  // 2. Clean up the zip file
-  bootstrap.cleanupBootstrap();
-
-  // 3. Restart daemon with new chain data
-  const { stopViaCli, startDetached, findDaemonBinary, findCliBinary } = require('./daemon');
-
-  // Stop daemon if running
-  const cli = findCliBinary();
-  if (cli.found) {
-    try {
-      await stopViaCli(cli.path);
-      // Wait a moment for clean shutdown
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (_) {
-      // Daemon might not be running, that's OK
+  try {
+    // 1. Extract bootstrap to temp folder
+    console.log('[bootstrap] Extracting bootstrap zip...');
+    const extractResult = await bootstrap.extractBootstrap();
+    if (!extractResult.ok) {
+      return extractResult;
     }
-  }
 
-  // Start daemon
-  const binary = findDaemonBinary();
-  if (binary.found) {
-    startDetached(binary.path);
-  }
+    // 2. Stop daemon BEFORE copying files (required to modify chain data)
+    console.log('[bootstrap] Stopping daemon for bootstrap installation...');
+    const cli = findCliBinary();
+    if (cli.found) {
+      try {
+        await stopViaCli(cli.path);
+        // Wait for daemon to fully stop
+        let attempts = 0;
+        while (attempts < 20) {
+          await new Promise(r => setTimeout(r, 500));
+          const status = await isDaemonRunning();
+          if (!status.running) break;
+          attempts++;
+        }
+        console.log('[bootstrap] Daemon stopped');
+      } catch (_) {
+        // Daemon might not be running, that's OK
+        console.log('[bootstrap] Daemon was not running');
+      }
+    }
 
-  return { ok: true, restarted: true };
+    // 3. Apply bootstrap files (delete old, copy new)
+    console.log('[bootstrap] Applying bootstrap files to DATA_DIR...');
+    const applyResult = await bootstrap.applyBootstrapFiles();
+    if (!applyResult.ok) {
+      return applyResult;
+    }
+
+    // 4. Clean up temp files
+    console.log('[bootstrap] Cleaning up temp files...');
+    bootstrap.cleanupBootstrap();
+
+    // 5. Restart daemon with new chain data
+    console.log('[bootstrap] Restarting daemon...');
+    const binary = findDaemonBinary();
+    if (binary.found) {
+      startDetached(binary.path);
+      daemonState.startedByUs = true;
+      daemonState.binaryPath = binary.path;
+    }
+
+    return { ok: true, restarted: true };
+  } catch (err) {
+    console.error('[bootstrap] Apply error:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
 });
 
 ipcMain.handle('ioc:bootstrapCleanup', async () => {

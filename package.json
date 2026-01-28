@@ -3,7 +3,10 @@
   "version": "0.1.0-RC3",
   "description": "Minimal Electron front-end for iocoind on macOS",
   "main": "src/main/main.js",
-  "author": "IOC Dev",
+  "author": {
+    "name": "Wizrig",
+    "email": "iocoindev@gmail.com"
+  },
   "license": "MIT",
   "scripts": {
     "dev": "electron .",

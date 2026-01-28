@@ -225,15 +225,52 @@ async function runBootstrapFlow() {
     console.log('[bootstrap] First run detected, starting bootstrap flow');
     bootstrapState.inProgress = true;
 
+    // STEP 1: Ensure daemon is running first to create wallet.dat and default files
+    // The daemon was started by initDaemon() in main.js, but we need to wait for it
+    // to initialize and create the default wallet files
+    splashState.phase = 'connecting';
+    updateSplashStatus('Starting daemon…');
+    showBootstrapModal();
+    updateBootstrapUI('Initializing wallet...', 0, null);
+
+    // Wait for daemon to be running and have created wallet.dat
+    // Give it up to 30 seconds to initialize
+    console.log('[bootstrap] Waiting for daemon to initialize...');
+    let daemonReady = false;
+    for (let i = 0; i < 30; i++) {
+      const status = await window.ioc.daemonStatus();
+      if (status.running) {
+        daemonReady = true;
+        console.log('[bootstrap] Daemon is running');
+        break;
+      }
+      updateBootstrapUI(`Waiting for daemon... (${i + 1}/30)`, 0, null);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (!daemonReady) {
+      throw new Error('Daemon failed to start');
+    }
+
+    // Give daemon a few more seconds to create wallet.dat and default files
+    updateBootstrapUI('Creating wallet files...', 0, null);
+    await new Promise(r => setTimeout(r, 5000));
+
+    // STEP 2: Download bootstrap while daemon is still running
     // Update splash to show downloading phase
     splashState.phase = 'downloading';
     updateSplashStatus('Downloading bootstrap…');
-
-    showBootstrapModal();
     updateBootstrapUI('Downloading chain data...', 0, null);
 
-    // Listen for progress events
+    // Listen for progress events (both download and apply phases)
     window.ioc.onBootstrapProgress((progress) => {
+      // Handle apply phase progress messages
+      if (progress.step && progress.message) {
+        updateBootstrapUI(progress.message, 100, null);
+        updateSplashStatus(progress.message);
+        return;
+      }
+      // Handle download progress
       const pct = progress.percent || 0;
       const downloaded = formatBytes(progress.downloaded || 0);
       const total = formatBytes(progress.total || 0);
@@ -242,17 +279,18 @@ async function runBootstrapFlow() {
       updateSplashStatus(`Downloading bootstrap… ${pct}%`);
     });
 
-    // Start download
+    // Start download (daemon keeps running during download)
     const downloadResult = await window.ioc.downloadBootstrap();
     if (!downloadResult.ok) {
       throw new Error(downloadResult.error || 'Download failed');
     }
 
-    // Apply bootstrap (extract + restart daemon)
+    // STEP 3: Apply bootstrap (stop daemon, wait 2 min, replace files, restart)
     splashState.phase = 'installing';
     updateSplashStatus('Installing bootstrap…');
-    updateBootstrapUI('Installing chain data...', 100, null);
+    updateBootstrapUI('Installing chain data... (this will take ~2 minutes)', 100, null);
 
+    // applyBootstrap now handles: stop daemon → wait 2 min → replace files → restart
     const applyResult = await window.ioc.applyBootstrap();
     if (!applyResult.ok) {
       throw new Error(applyResult.error || 'Apply failed');
@@ -277,7 +315,7 @@ async function runBootstrapFlow() {
     bootstrapState.error = err.message || String(err);
     bootstrapState.inProgress = false;
     splashState.phase = 'connecting';
-    updateBootstrapUI('Download failed', 0, bootstrapState.error);
+    updateBootstrapUI('Setup failed', 0, bootstrapState.error);
     return false;
   }
 }

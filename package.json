@@ -1,6 +1,6 @@
 {
   "name": "ioc-widget-wallet",
-  "version": "0.1.0-RC4",
+  "version": "0.1.0-RC5",
   "description": "Minimal Electron front-end for iocoind on macOS",
   "main": "src/main/main.js",
   "author": {

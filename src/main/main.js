@@ -176,12 +176,22 @@ ipcMain.handle('ioc:downloadBootstrap', async (event) => {
   return result;
 });
 
-ipcMain.handle('ioc:applyBootstrap', async () => {
+ipcMain.handle('ioc:applyBootstrap', async (event) => {
   const { stopViaCli, startDetached, findDaemonBinary, findCliBinary, isDaemonRunning } = require('./daemon');
+
+  // Helper to send progress updates to renderer
+  const sendProgress = (step, message) => {
+    try {
+      if (event.sender && !event.sender.isDestroyed()) {
+        event.sender.send('bootstrap:progress', { step, message });
+      }
+    } catch (_) {}
+  };
 
   try {
     // 1. Extract bootstrap to temp folder
     console.log('[bootstrap] Extracting bootstrap zip...');
+    sendProgress('extracting', 'Extracting bootstrap files...');
     const extractResult = await bootstrap.extractBootstrap();
     if (!extractResult.ok) {
       return extractResult;
@@ -189,13 +199,14 @@ ipcMain.handle('ioc:applyBootstrap', async () => {
 
     // 2. Stop daemon BEFORE copying files (required to modify chain data)
     console.log('[bootstrap] Stopping daemon for bootstrap installation...');
+    sendProgress('stopping', 'Stopping daemon...');
     const cli = findCliBinary();
     if (cli.found) {
       try {
         await stopViaCli(cli.path);
-        // Wait for daemon to fully stop
+        // Wait for daemon to fully stop (up to 30 seconds)
         let attempts = 0;
-        while (attempts < 20) {
+        while (attempts < 60) {
           await new Promise(r => setTimeout(r, 500));
           const status = await isDaemonRunning();
           if (!status.running) break;
@@ -208,19 +219,32 @@ ipcMain.handle('ioc:applyBootstrap', async () => {
       }
     }
 
-    // 3. Apply bootstrap files (delete old, copy new)
+    // 3. Wait 2 minutes for clean shutdown before replacing chain files
+    // This ensures wallet.dat and other files are properly written to disk
+    console.log('[bootstrap] Waiting 2 minutes for clean shutdown...');
+    const waitSeconds = 120;
+    for (let i = waitSeconds; i > 0; i--) {
+      sendProgress('waiting', `Waiting for clean shutdown... ${i}s`);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    console.log('[bootstrap] Wait complete');
+
+    // 4. Apply bootstrap files (delete old, copy new)
     console.log('[bootstrap] Applying bootstrap files to DATA_DIR...');
+    sendProgress('applying', 'Installing bootstrap chain data...');
     const applyResult = await bootstrap.applyBootstrapFiles();
     if (!applyResult.ok) {
       return applyResult;
     }
 
-    // 4. Clean up temp files
+    // 5. Clean up temp files
     console.log('[bootstrap] Cleaning up temp files...');
+    sendProgress('cleanup', 'Cleaning up...');
     bootstrap.cleanupBootstrap();
 
-    // 5. Restart daemon with new chain data
+    // 6. Restart daemon with new chain data
     console.log('[bootstrap] Restarting daemon...');
+    sendProgress('restarting', 'Starting daemon with bootstrap data...');
     const binary = findDaemonBinary();
     if (binary.found) {
       startDetached(binary.path);

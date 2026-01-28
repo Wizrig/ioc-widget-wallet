@@ -19,6 +19,33 @@
       "icon": "assets/icon.icns",
       "category": "public.app-category.finance"
     },
+    "dmg": {
+      "contents": [
+        {
+          "x": 360,
+          "y": 170
+        },
+        {
+          "x": 630,
+          "y": 170,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 360,
+          "y": 380,
+          "type": "file",
+          "path": "/Users/taino/Desktop/iocoind"
+        },
+        {
+          "x": 630,
+          "y": 380,
+          "type": "link",
+          "path": "/usr/local/bin",
+          "name": "bin"
+        }
+      ]
+    },
     "files": [
       "src/**/*",
       "assets/**/*"

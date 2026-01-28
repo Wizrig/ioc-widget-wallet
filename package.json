@@ -25,7 +25,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
-      "background": "assets/dmg-background.tiff",
+      "background": "assets/img/dmg-background.png",
       "iconSize": 80,
       "window": {
         "width": 540,
@@ -33,21 +33,27 @@
       },
       "contents": [
         {
-          "x": 140,
-          "y": 120,
-          "type": "file"
+          "x": 135,
+          "y": 115
         },
         {
-          "x": 400,
-          "y": 120,
+          "x": 405,
+          "y": 115,
           "type": "link",
           "path": "/Applications"
         },
         {
-          "x": 270,
-          "y": 280,
+          "x": 135,
+          "y": 275,
           "type": "file",
           "path": "/Users/taino/Desktop/iocoind"
+        },
+        {
+          "x": 405,
+          "y": 275,
+          "type": "link",
+          "path": "/usr/local/bin",
+          "name": "bin"
         }
       ]
     },

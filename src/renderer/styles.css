@@ -20,8 +20,8 @@
   --danger:#ff6b6b;                          /* Error state */
 }
 *{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;user-select:none}
+html,body{height:100%;background:#050A12}
+body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;user-select:none}
 .hidden{display:none!important}
 
 /* Header */
@@ -338,6 +338,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 .splash-overlay {
   position: fixed;
   inset: 0;
+  background: #050A12; /* Explicit dark background to prevent white flash */
   background: var(--bg);
   z-index: 9999;
   display: flex;

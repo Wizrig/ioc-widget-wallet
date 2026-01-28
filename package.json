@@ -17,32 +17,31 @@
     "productName": "IOC Widget Wallet",
     "mac": {
       "icon": "assets/icon.icns",
-      "category": "public.app-category.finance"
+      "category": "public.app-category.finance",
+      "identity": "Developer ID Application: Joel Bosh (E3UBUT7VX4)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
+      "background": "assets/dmg-background.tiff",
+      "iconSize": 80,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "contents": [
         {
-          "x": 360,
-          "y": 170
+          "x": 140,
+          "y": 190,
+          "type": "file"
         },
         {
-          "x": 630,
-          "y": 170,
+          "x": 400,
+          "y": 190,
           "type": "link",
           "path": "/Applications"
-        },
-        {
-          "x": 360,
-          "y": 380,
-          "type": "file",
-          "path": "/Users/taino/Desktop/iocoind"
-        },
-        {
-          "x": 630,
-          "y": 380,
-          "type": "link",
-          "path": "/usr/local/bin",
-          "name": "bin"
         }
       ]
     },

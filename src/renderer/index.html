@@ -6,12 +6,12 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self';">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="splash-active">
   <!-- Splash overlay (shown during daemon warmup) -->
   <div id="splashOverlay" class="splash-overlay">
     <div class="splash-content">
       <img src="../../assets/icon.png" alt="IOCoin" class="splash-logo" onerror="this.style.display='none'">
-      <div id="splashStatus" class="splash-status">Starting demon…</div>
+      <div id="splashStatus" class="splash-status">Connecting to daemon…<br>This may take a few minutes</div>
       <div class="splash-progress">
         <div class="splash-bar"></div>
       </div>
@@ -50,6 +50,7 @@
       <div class="widget-label">TOTAL I/O AVAILABLE</div>
       <div class="widget-balance" id="widget-balance">—</div>
       <div class="widget-staking">STAKING: <span class="value" id="widget-staking">0</span></div>
+      <button class="widget-send" id="widget-send-btn"><span>▶</span> Send</button>
     </div>
   </div>
 

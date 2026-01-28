@@ -4,10 +4,11 @@ try {
     app.on('browser-window-created', (_evt, win) => {
       win.once('ready-to-show', () => {
         try {
-          const [w, h] = win.getSize();
+          // Lock at compact widget size on startup
           win.setResizable(false);
-          win.setMinimumSize(w, h);
-          win.setMaximumSize(w, h);
+          win.setMinimumSize(280, 160);
+          win.setMaximumSize(280, 160);
+          win.setSize(280, 160, true);
         } catch {}
       });
     });
@@ -568,10 +569,11 @@ ipcMain.handle('ioc/newaddr', async (_e, label) => {
 });
 
 function createWindow() {
+  // Start in compact widget size - will expand when user clicks stars icon
   win = new BrowserWindow({
-    width: 600,
-    height: 525,
-    backgroundColor: '#0f171c',
+    width: 280,
+    height: 160,
+    backgroundColor: '#050A12',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {x: 14, y: 14},
     webPreferences: {
@@ -646,7 +648,7 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
   const { ipcMain, BrowserWindow } = require('electron');
 
   const FULL_SIZE = { width: 600, height: 525 };
-  const COMPACT_SIZE = { width: 280, height: 130 };
+  const COMPACT_SIZE = { width: 280, height: 160 };
 
   ipcMain.handle('ioc:setCompactMode', (event, isCompact) => {
     const win = BrowserWindow.fromWebContents(event.sender);

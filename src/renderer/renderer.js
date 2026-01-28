@@ -19,12 +19,14 @@ function showSplash(text) {
   const status = $('splashStatus');
   if (overlay) overlay.classList.remove('hidden');
   if (status && text) status.textContent = text;
+  document.body.classList.add('splash-active');
   splashState.visible = true;
 }
 
 function hideSplash() {
   const overlay = $('splashOverlay');
   if (overlay) overlay.classList.add('hidden');
+  document.body.classList.remove('splash-active');
   splashState.visible = false;
 }
 
@@ -685,6 +687,11 @@ function main() {
   $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); if (e.key === 'Escape') {$('unlockModal').classList.add('hidden');} });
 
   $('sendBtn').addEventListener('click', () => $('sendModal').classList.remove('hidden'));
+  // Widget send button (compact mode)
+  const widgetSendBtn = $('widget-send-btn');
+  if (widgetSendBtn) {
+    widgetSendBtn.addEventListener('click', () => $('sendModal').classList.remove('hidden'));
+  }
   $('cancelSend').addEventListener('click', () => $('sendModal').classList.add('hidden'));
   $('doSend').addEventListener('click', async () => {
     const a = ($('sendAddr').value||'').trim();
@@ -3276,13 +3283,8 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 
   function setCompactMode(compact) {
     isCompact = compact;
-
-    if (isCompact) {
-      updateWidgetValues();
-    }
-
     document.body.classList.toggle('compact-mode', isCompact);
-
+    if (isCompact) updateWidgetValues();
     // Save state
     try {
       localStorage.setItem('ioc-compact-mode', isCompact ? '1' : '0');
@@ -3291,12 +3293,8 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 
   async function toggleCompact() {
     isCompact = !isCompact;
-
-    if (isCompact) {
-      updateWidgetValues();
-    }
-
     document.body.classList.toggle('compact-mode', isCompact);
+    if (isCompact) updateWidgetValues();
 
     // Tell main process to resize window
     if (window.ioc && window.ioc.setCompactMode) {
@@ -3323,20 +3321,12 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
       compactBtn.addEventListener('click', toggleCompact);
     }
 
-    // Restore compact state from localStorage on reload
-    try {
-      const saved = localStorage.getItem('ioc-compact-mode');
-      if (saved === '1') {
-        isCompact = true;
-        document.body.classList.add('compact-mode');
-        if (window.ioc && window.ioc.setCompactMode) {
-          window.ioc.setCompactMode(true);
-        }
-        updateWidgetValues();
-      }
-    } catch (e) {}
+    // Start in compact mode (window starts compact)
+    isCompact = true;
+    document.body.classList.add('compact-mode');
+    updateWidgetValues();
 
-    // Observe balance changes to keep widget in sync
+    // Observe balance/staking changes to keep widget in sync
     const mainBalance = document.getElementById('big-balance');
     if (mainBalance) {
       new MutationObserver(() => {

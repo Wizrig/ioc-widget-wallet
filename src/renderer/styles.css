@@ -221,14 +221,15 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   display: flex;
   flex-direction: column;
   height: calc(100vh - 110px);
+  justify-content: center;
 }
 #tab-overview .panel {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
 }
 #tab-overview .panel-inner {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -333,7 +334,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 }
 /* ===== End Bootstrap Modal ===== */
 
-/* ===== Splash Overlay (daemon warmup) ===== */
+/* ===== Splash Overlay (daemon warmup) - compact widget size ===== */
 .splash-overlay {
   position: fixed;
   inset: 0;
@@ -343,6 +344,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   align-items: center;
   justify-content: center;
   transition: opacity 0.3s ease;
+  padding-top: 30px; /* Account for traffic lights */
+  -webkit-app-region: drag; /* Allow window dragging */
 }
 .splash-overlay.hidden {
   opacity: 0;
@@ -350,25 +353,26 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
 }
 .splash-content {
   text-align: center;
-  padding: 40px;
+  padding: 12px 16px;
 }
 .splash-logo {
-  width: 96px;
-  height: 96px;
-  margin-bottom: 24px;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
   opacity: 0.95;
 }
 .splash-status {
   color: var(--muted);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 500;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+  line-height: 1.4;
 }
 .splash-progress {
-  width: 200px;
-  height: 6px;
+  width: 160px;
+  height: 5px;
   background: var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
   margin: 0 auto;
 }
@@ -376,7 +380,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,
   width: 30%;
   height: 100%;
   background: var(--accent);
-  border-radius: 6px;
+  border-radius: 5px;
   animation: splash-indeterminate 1.2s ease-in-out infinite;
 }
 @keyframes splash-indeterminate {
@@ -490,24 +494,38 @@ body.compact-mode {
   overflow: hidden;
 }
 
-/* Hide everything except chrome and widget content */
+/* Hide full wallet UI, show only widget */
 body.compact-mode .tabs,
 body.compact-mode .page,
-body.compact-mode .splash-overlay,
 body.compact-mode #connectBanner {
   display: none !important;
 }
 
-/* Show only the widget container */
-body.compact-mode .compact-widget {
-  display: block !important;
-}
-
-/* Widget container */
+/* Hide widget by default */
 .compact-widget {
   display: none;
-  padding: 4px 12px 8px 12px;
-  display: none;
+  padding: 6px 8px 8px 8px;
+  height: calc(100vh - 32px);
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* Show widget in compact mode */
+body.compact-mode .compact-widget {
+  display: flex !important;
+}
+
+/* When splash is visible, hide everything except splash */
+body.splash-active .chrome,
+body.splash-active .tabs,
+body.splash-active .page,
+body.splash-active .compact-widget {
+  display: none !important;
+}
+
+/* Keep splash visible during startup */
+body.splash-active .splash-overlay {
+  display: flex !important;
 }
 
 .compact-widget-inner {
@@ -516,23 +534,24 @@ body.compact-mode .compact-widget {
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 10px 14px 12px 14px;
   text-align: center;
+  width: 100%;
 }
 
 /* Widget label */
 .compact-widget .widget-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 }
 
 /* Widget balance */
 .compact-widget .widget-balance {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   color: #FFFFFF;
   letter-spacing: 0.5px;
@@ -542,14 +561,35 @@ body.compact-mode .compact-widget {
 
 /* Widget staking line */
 .compact-widget .widget-staking {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
 }
 .compact-widget .widget-staking .value {
   color: #FFFFFF;
+  font-weight: 500;
 }
 
-/* Chrome adjustments for compact mode - minimal header */
+/* Widget send button */
+.compact-widget .widget-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
+.compact-widget .widget-send:hover {
+  background: #2b8fc0;
+}
+
+/* Chrome adjustments for compact mode */
 body.compact-mode .chrome {
   padding: 6px 10px 2px 10px;
 }
@@ -580,22 +620,22 @@ body.compact-mode .chrome .bars span:nth-child(4) { height: 10px; }
 /* Compact mode modal adjustments */
 body.compact-mode .modal {
   align-items: flex-start;
-  padding-top: 5px;
+  padding-top: 4px;
 }
 body.compact-mode .modal .sheet {
   width: 260px;
-  padding: 10px;
+  padding: 8px 10px;
   border-radius: 10px;
 }
 body.compact-mode .modal .title2 {
-  font-size: 12px;
+  font-size: 11px;
   margin-bottom: 6px;
-  text-align: right;
-  padding-right: 5px;
+  text-align: left;
+  padding-left: 70px;
 }
 body.compact-mode .modal input {
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: 11px;
   margin-top: 4px;
   border-radius: 6px;
 }
@@ -605,12 +645,12 @@ body.compact-mode .modal .row {
 }
 body.compact-mode .modal .btn {
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 10px;
   border-radius: 6px;
 }
 body.compact-mode .modal .err {
-  font-size: 10px;
-  min-height: 14px;
+  font-size: 9px;
+  min-height: 12px;
   margin-top: 4px;
 }
 

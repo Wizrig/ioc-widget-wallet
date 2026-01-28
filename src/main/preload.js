@@ -24,7 +24,13 @@ contextBridge.exposeInMainWorld('ioc', {
   },
   // Window control
   quitApp: (stopDaemon = true) => ipcRenderer.invoke('ioc:quitApp', stopDaemon),
-  hideWindow: () => ipcRenderer.invoke('ioc:hideWindow')
+  hideWindow: () => ipcRenderer.invoke('ioc:hideWindow'),
+  // Compact widget mode
+  setCompactMode: (isCompact) => ipcRenderer.invoke('ioc:setCompactMode', isCompact),
+  onCompactModeChanged: (cb) => {
+    ipcRenderer.removeAllListeners('compact-mode-changed');
+    ipcRenderer.on('compact-mode-changed', (_ev, isCompact) => cb(isCompact));
+  }
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();

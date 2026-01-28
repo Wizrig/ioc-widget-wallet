@@ -1,8 +1,7 @@
 try {
   if (!global.__IOC_LOCKED_WINDOW__) {
-    const { app, BrowserWindow , Menu} = require('electron');
+    const { app, BrowserWindow } = require('electron');
     app.on('browser-window-created', (_evt, win) => {
-      // Lock size once it has its final dimensions
       win.once('ready-to-show', () => {
         try {
           const [w, h] = win.getSize();
@@ -572,8 +571,6 @@ function createWindow() {
   win = new BrowserWindow({
     width: 600,
     height: 525,
-    minWidth: 600,
-    minHeight: 525,
     backgroundColor: '#0f171c',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {x: 14, y: 14},
@@ -641,6 +638,33 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+// ===== Compact Widget Mode IPC =====
+(() => {
+  if (global.__iocCompactRegistered) return;
+  global.__iocCompactRegistered = true;
+  const { ipcMain, BrowserWindow } = require('electron');
+
+  const FULL_SIZE = { width: 600, height: 525 };
+  const COMPACT_SIZE = { width: 280, height: 130 };
+
+  ipcMain.handle('ioc:setCompactMode', (event, isCompact) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+
+    const size = isCompact ? COMPACT_SIZE : FULL_SIZE;
+
+    // Temporarily allow resize to change size
+    win.setResizable(true);
+    win.setMinimumSize(size.width, size.height);
+    win.setMaximumSize(size.width, size.height);
+    win.setSize(size.width, size.height, true);
+    win.setResizable(false);
+
+    return true;
+  });
+})();
+
 (()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();
 (()=>{if(global.__iocDiagRegistered)return;global.__iocDiagRegistered=true;const e=require('electron');const cp=require('child_process');const procs=new Map();function start(wc){if(procs.has(wc.id))return;const p=cp.spawn('tail',['-F','-n0',`${process.env.HOME||require('os').homedir()}/Library/Application Support/IOCoin/debug.log`],{stdio:['ignore','pipe','pipe']});procs.set(wc.id,p);const send=d=>{try{wc.send('diag:data',String(d))}catch{}};p.stdout.on('data',send);p.stderr.on('data',send);p.on('close',()=>{procs.delete(wc.id)});wc.once('destroyed',()=>{try{p.kill()}catch{} procs.delete(wc.id)})}function stop(wc){const p=procs.get(wc.id);if(p){try{p.kill()}catch{} procs.delete(wc.id)}}e.ipcMain.on('diag:start',ev=>start(ev.sender));e.ipcMain.on('diag:stop',ev=>stop(ev.sender))})();
 

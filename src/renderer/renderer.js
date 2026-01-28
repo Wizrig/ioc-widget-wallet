@@ -3253,3 +3253,108 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
   new MutationObserver(sync).observe(document.documentElement, {childList:true, subtree:true});
   window.addEventListener('hashchange', sync, false);
 })();
+
+/* ===== Compact Widget Mode ===== */
+(function() {
+  let isCompact = false;
+
+  function updateWidgetValues() {
+    // Sync balance from main display to widget
+    const mainBalance = document.getElementById('big-balance');
+    const widgetBalance = document.getElementById('widget-balance');
+    if (mainBalance && widgetBalance) {
+      widgetBalance.textContent = mainBalance.textContent;
+    }
+
+    // Sync staking from main display to widget
+    const mainStaking = document.getElementById('staking');
+    const widgetStaking = document.getElementById('widget-staking');
+    if (mainStaking && widgetStaking) {
+      widgetStaking.textContent = mainStaking.textContent;
+    }
+  }
+
+  function setCompactMode(compact) {
+    isCompact = compact;
+
+    if (isCompact) {
+      updateWidgetValues();
+    }
+
+    document.body.classList.toggle('compact-mode', isCompact);
+
+    // Save state
+    try {
+      localStorage.setItem('ioc-compact-mode', isCompact ? '1' : '0');
+    } catch (e) {}
+  }
+
+  async function toggleCompact() {
+    isCompact = !isCompact;
+
+    if (isCompact) {
+      updateWidgetValues();
+    }
+
+    document.body.classList.toggle('compact-mode', isCompact);
+
+    // Tell main process to resize window
+    if (window.ioc && window.ioc.setCompactMode) {
+      await window.ioc.setCompactMode(isCompact);
+    }
+
+    // Save state
+    try {
+      localStorage.setItem('ioc-compact-mode', isCompact ? '1' : '0');
+    } catch (e) {}
+  }
+
+  function init() {
+    // Listen for compact mode changes from main process
+    if (window.ioc && window.ioc.onCompactModeChanged) {
+      window.ioc.onCompactModeChanged((compact) => {
+        setCompactMode(compact);
+      });
+    }
+
+    // Add click handler for compact button (stars icon)
+    const compactBtn = document.getElementById('ic-compact');
+    if (compactBtn) {
+      compactBtn.addEventListener('click', toggleCompact);
+    }
+
+    // Restore compact state from localStorage on reload
+    try {
+      const saved = localStorage.getItem('ioc-compact-mode');
+      if (saved === '1') {
+        isCompact = true;
+        document.body.classList.add('compact-mode');
+        if (window.ioc && window.ioc.setCompactMode) {
+          window.ioc.setCompactMode(true);
+        }
+        updateWidgetValues();
+      }
+    } catch (e) {}
+
+    // Observe balance changes to keep widget in sync
+    const mainBalance = document.getElementById('big-balance');
+    if (mainBalance) {
+      new MutationObserver(() => {
+        if (isCompact) updateWidgetValues();
+      }).observe(mainBalance, { childList: true, characterData: true, subtree: true });
+    }
+
+    const mainStaking = document.getElementById('staking');
+    if (mainStaking) {
+      new MutationObserver(() => {
+        if (isCompact) updateWidgetValues();
+      }).observe(mainStaking, { childList: true, characterData: true, subtree: true });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();

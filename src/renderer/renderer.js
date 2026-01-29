@@ -233,35 +233,22 @@ async function runBootstrapFlow() {
     showBootstrapModal();
     updateBootstrapUI('Initializing wallet...', 0, null);
 
-    // Wait for daemon to be running AND responding to RPC
-    // This confirms wallet.dat and default files have been created
-    console.log('[bootstrap] Waiting for daemon to initialize...');
-    let daemonReady = false;
-    for (let i = 0; i < 60; i++) {
+    // Wait for daemon to be running, responding to RPC, and processing blocks.
+    // Once blocks > 0, wallet.dat and default files are confirmed created.
+    // No timeout - user may be dealing with Gatekeeper prompts on first run.
+    console.log('[bootstrap] Waiting for daemon to initialize and process blocks...');
+    let elapsed = 0;
+    while (true) {
       try {
         const status = await window.ioc.daemonStatus();
-        if (status.running) {
-          daemonReady = true;
-          console.log('[bootstrap] Daemon is responding to RPC at block:', status.blockCount);
+        if (status.running && status.blockCount > 0) {
+          console.log('[bootstrap] Daemon initialized, at block:', status.blockCount);
           break;
         }
       } catch (_) {}
-      updateBootstrapUI(`Waiting for daemon to initialize... (${i + 1}s)`, 0, null);
-      updateSplashStatus(`Starting daemon… (${i + 1}s)`);
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    if (!daemonReady) {
-      throw new Error('Daemon failed to start - RPC not responding');
-    }
-
-    // Let daemon run for 60 seconds to create wallet.dat, sync initial peers,
-    // and begin processing blocks before we stop it for bootstrap
-    updateBootstrapUI('Daemon initializing files...', 0, null);
-    updateSplashStatus('Creating wallet files…');
-    console.log('[bootstrap] Letting daemon run for 60s to create default files...');
-    for (let i = 60; i > 0; i--) {
-      updateBootstrapUI(`Initializing wallet files... ${i}s`, 0, null);
+      elapsed++;
+      updateBootstrapUI(`Waiting for daemon to initialize... (${elapsed}s)`, 0, null);
+      updateSplashStatus(`Starting daemon… (${elapsed}s)`);
       await new Promise(r => setTimeout(r, 1000));
     }
 

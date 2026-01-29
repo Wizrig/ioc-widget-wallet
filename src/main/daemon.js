@@ -66,20 +66,24 @@ function findCliBinary() {
   const ext = process.platform === 'win32' ? '.exe' : '';
   const candidates = [];
 
-  // Check bundled
+  // Check bundled iocoin-cli first, then fall back to iocoind (which also accepts CLI commands)
   try {
     const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-    const bundled = path.join(resourcesPath, 'iocoin-cli' + ext);
-    candidates.push(bundled);
-    if (fs.existsSync(bundled)) {
-      return { found: true, path: bundled };
+    for (const name of ['iocoin-cli', 'iocoind']) {
+      const bundled = path.join(resourcesPath, name + ext);
+      candidates.push(bundled);
+      if (fs.existsSync(bundled)) {
+        return { found: true, path: bundled };
+      }
     }
   } catch (_) {}
 
   if (process.platform === 'darwin' || process.platform === 'linux') {
     const unixPaths = [
       '/usr/local/bin/iocoin-cli',
-      '/opt/homebrew/bin/iocoin-cli'
+      '/opt/homebrew/bin/iocoin-cli',
+      '/usr/local/bin/iocoind',
+      '/opt/homebrew/bin/iocoind'
     ];
     for (const p of unixPaths) {
       candidates.push(p);
@@ -90,7 +94,9 @@ function findCliBinary() {
   } else if (process.platform === 'win32') {
     const winPaths = [
       path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoin-cli.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoin-cli.exe')
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoin-cli.exe'),
+      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoind.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoind.exe')
     ];
     for (const p of winPaths) {
       candidates.push(p);

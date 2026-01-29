@@ -34,27 +34,14 @@
       },
       "contents": [
         {
-          "x": 135,
-          "y": 115
+          "x": 190,
+          "y": 190
         },
         {
-          "x": 405,
-          "y": 115,
+          "x": 350,
+          "y": 190,
           "type": "link",
           "path": "/Applications"
-        },
-        {
-          "x": 135,
-          "y": 275,
-          "type": "file",
-          "path": "/Users/taino/Desktop/iocoind"
-        },
-        {
-          "x": 405,
-          "y": 275,
-          "type": "link",
-          "path": "/usr/local/bin",
-          "name": "bin"
         }
       ]
     },

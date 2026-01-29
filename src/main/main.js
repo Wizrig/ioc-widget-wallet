@@ -74,7 +74,8 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
-const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, startDetached } = require('./daemon');
+const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, startDetached,
+        ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError, getEarlyExit } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -90,44 +91,45 @@ let daemonState = { running: false, pid: null, error: null, binaryPath: null, st
 ipcMain.handle('ioc:daemonStatus', async () => {
   const status = await isDaemonRunning();
   daemonState.running = status.running;
-  daemonState.error = status.error || null;
+  if (status.running) {
+    daemonState.error = null;
+  }
   return {
     running: daemonState.running,
     pid: daemonState.pid,
     error: daemonState.error,
     binaryPath: daemonState.binaryPath,
-    startedByUs: daemonState.startedByUs
+    startedByUs: daemonState.startedByUs,
+    needsBootstrap: daemonState.needsBootstrap || false,
+    blockCount: status.blockCount || 0,
+    spawnError: getSpawnError(),
+    earlyExit: getEarlyExit()
   };
 });
 
 /**
  * Auto-start daemon on app launch if not already running.
+ * Flow: ensureConf → ensureDaemon (install+verify) → bootstrap if needed → start daemon
  * Called from app.whenReady().
  */
 async function initDaemon() {
   ensureConf();
 
-  // Auto-install bundled iocoind to /usr/local/bin if not already there
-  const targetBin = '/usr/local/bin/iocoind';
-  if (!fs.existsSync(targetBin)) {
-    try {
-      const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-      const bundled = path.join(resourcesPath, 'iocoind');
-      if (fs.existsSync(bundled)) {
-        console.log('[daemon] Installing bundled iocoind to /usr/local/bin...');
-        if (!fs.existsSync('/usr/local/bin')) {
-          fs.mkdirSync('/usr/local/bin', { recursive: true });
-        }
-        fs.copyFileSync(bundled, targetBin);
-        fs.chmodSync(targetBin, 0o755);
-        console.log('[daemon] iocoind installed to /usr/local/bin');
-      }
-    } catch (e) {
-      console.error('[daemon] Could not auto-install iocoind:', e.message);
-    }
+  // Step 1: Ensure daemon is installed and verified at /usr/local/bin/iocoind
+  try {
+    await ensureDaemon((step, msg) => {
+      console.log(`[daemon] ${step}: ${msg}`);
+      daemonState.statusMessage = msg;
+    });
+  } catch (err) {
+    console.error('[daemon] ensureDaemon failed:', err.message);
+    daemonState.error = err.message;
+    return { ok: false, error: err.message };
   }
 
-  // Check if daemon is already running
+  daemonState.binaryPath = DAEMON_PATH;
+
+  // Step 2: Check if daemon is already running
   const status = await isDaemonRunning();
   if (status.running) {
     console.log('[daemon] Already running, attaching...');
@@ -136,41 +138,24 @@ async function initDaemon() {
     return { ok: true, attached: true };
   }
 
-  // Check if bootstrap is needed BEFORE starting daemon
-  // This ensures bootstrap chain files are in place so the daemon
-  // never creates its own empty defaults that would conflict.
+  // Step 3: Check if bootstrap is needed BEFORE starting daemon
   if (bootstrap.needsBootstrap()) {
     console.log('[daemon] Bootstrap needed — deferring daemon start to renderer flow');
     daemonState.needsBootstrap = true;
-    // Find binary now so renderer knows we CAN start later
-    const binary = findDaemonBinary();
-    if (binary.found) {
-      daemonState.binaryPath = binary.path;
-    }
     return { ok: true, deferred: true, needsBootstrap: true };
   }
 
-  // Find daemon binary
-  const binary = findDaemonBinary();
-  if (!binary.found) {
-    const errorMsg = `iocoind not found. Searched: ${binary.searched.join(', ')}`;
-    console.error('[daemon]', errorMsg);
-    daemonState.error = errorMsg;
-    return { ok: false, error: errorMsg, searched: binary.searched };
-  }
-
-  daemonState.binaryPath = binary.path;
-  console.log('[daemon] Starting daemon from:', binary.path);
-
-  // Start daemon
-  const started = startDetached(binary.path);
+  // Step 4: No bootstrap needed — start daemon directly
+  console.log('[daemon] Starting daemon from:', DAEMON_PATH);
+  const started = startDetached(DAEMON_PATH);
   if (started) {
     daemonState.startedByUs = true;
     console.log('[daemon] Daemon started successfully');
-    return { ok: true, started: true, path: binary.path };
+    return { ok: true, started: true, path: DAEMON_PATH };
   } else {
-    daemonState.error = 'Failed to start daemon';
-    return { ok: false, error: 'Failed to start daemon' };
+    const spawnErr = getSpawnError();
+    daemonState.error = spawnErr || 'Failed to start daemon';
+    return { ok: false, error: daemonState.error };
   }
 }
 // ===== End daemon IPC =====
@@ -228,8 +213,7 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
       return extractResult;
     }
 
-    // 2. Apply bootstrap files directly — daemon has NOT been started yet
-    // so no need to stop anything. Files go straight into DATA_DIR.
+    // 2. Apply bootstrap files — daemon has NOT been started yet.
     // applyBootstrapFiles() only copies blk*.dat and txleveldb/
     // and NEVER touches wallet.dat.
     console.log('[bootstrap] Installing bootstrap files to DATA_DIR...');
@@ -244,19 +228,41 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
     sendProgress('cleanup', 'Cleaning up...');
     bootstrap.cleanupBootstrap();
 
-    // 4. Now start the daemon — it will boot with bootstrap chain data
+    // 4. Start daemon from /usr/local/bin/iocoind (already verified)
     console.log('[bootstrap] Starting daemon with bootstrap data...');
     sendProgress('starting', 'Starting daemon...');
-    const binary = findDaemonBinary();
-    if (binary.found) {
-      startDetached(binary.path);
-      daemonState.startedByUs = true;
-      daemonState.binaryPath = binary.path;
-      daemonState.running = true;
-      daemonState.needsBootstrap = false;
+    const started = startDetached(DAEMON_PATH);
+    if (!started) {
+      const spawnErr = getSpawnError();
+      return { ok: false, error: spawnErr || 'Failed to start daemon' };
+    }
+    daemonState.startedByUs = true;
+    daemonState.binaryPath = DAEMON_PATH;
+    daemonState.needsBootstrap = false;
+
+    // 5. Poll for daemon to become responsive (30s timeout)
+    console.log('[bootstrap] Waiting for daemon to respond...');
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      sendProgress('starting', `Starting daemon... (${i + 1}s)`);
+      const status = await isDaemonRunning();
+      if (status.running) {
+        console.log('[bootstrap] Daemon is running, block count:', status.blockCount);
+        daemonState.running = true;
+        return { ok: true, started: true };
+      }
+      // Check for early exit / spawn error
+      const earlyExit = getEarlyExit();
+      const spawnErr = getSpawnError();
+      if (earlyExit || spawnErr) {
+        const errMsg = spawnErr || `Daemon exited with code ${earlyExit?.code}`;
+        console.error('[bootstrap] Daemon failed:', errMsg);
+        return { ok: false, error: errMsg };
+      }
     }
 
-    return { ok: true, started: true };
+    // Timeout
+    return { ok: false, error: 'Daemon did not respond within 30 seconds' };
   } catch (err) {
     console.error('[bootstrap] Apply error:', err);
     return { ok: false, error: err.message || String(err) };
@@ -669,6 +675,13 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Deny ALL permission requests (eliminates Location Services prompt)
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    console.log('[permissions] Denied request for:', permission);
+    callback(false);
+  });
+
   // Set dock icon on macOS (shows IOCoin icon instead of Electron in dev mode)
   if (process.platform === 'darwin' && app.dock) {
     const dockIconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
@@ -680,9 +693,33 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Initialize daemon before showing window
+  // Initialize daemon (install+verify, check bootstrap, start if ready)
   const daemonResult = await initDaemon();
   console.log('[app] Daemon init result:', daemonResult);
+
+  // If daemon install/verify failed with a blocking error, show dialog
+  if (!daemonResult.ok && daemonResult.error) {
+    const isRosetta = daemonResult.error.includes('Rosetta');
+    const response = dialog.showMessageBoxSync({
+      type: 'error',
+      title: isRosetta ? 'Rosetta 2 Required' : 'Daemon Error',
+      message: daemonResult.error,
+      buttons: isRosetta ? ['Quit'] : ['Retry', 'Quit'],
+      defaultId: isRosetta ? 0 : 1
+    });
+    if (isRosetta || response === 1) {
+      app.quit();
+      return;
+    }
+    // Retry
+    const retryResult = await initDaemon();
+    if (!retryResult.ok) {
+      dialog.showErrorBox('Daemon Error', retryResult.error || 'Failed to initialize daemon');
+      app.quit();
+      return;
+    }
+  }
+
   createWindow();
 });
 app.on('window-all-closed', () => {

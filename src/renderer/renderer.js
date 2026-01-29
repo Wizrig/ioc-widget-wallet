@@ -219,6 +219,28 @@ async function runBootstrapFlow() {
 
     if (!needed) {
       console.log('[bootstrap] Not needed, chain data exists');
+      // No bootstrap needed — but daemon might not be running yet.
+      // Wait for it to come online (30s timeout).
+      splashState.phase = 'connecting';
+      updateSplashStatus('Connecting to daemon…');
+      for (let i = 0; i < 30; i++) {
+        try {
+          const status = await window.ioc.daemonStatus();
+          if (status.running) {
+            console.log('[bootstrap] Daemon is running');
+            return false;
+          }
+          if (status.spawnError || status.earlyExit) {
+            const errMsg = status.spawnError || `Daemon exited (code ${status.earlyExit?.code})`;
+            console.error('[bootstrap] Daemon error:', errMsg);
+            updateSplashStatus(`Daemon error: ${errMsg}`);
+            return false;
+          }
+        } catch (_) {}
+        updateSplashStatus(`Connecting to daemon… (${i + 1}s)`);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      updateSplashStatus('Daemon not responding after 30s');
       return false;
     }
 
@@ -250,7 +272,7 @@ async function runBootstrapFlow() {
       throw new Error(downloadResult.error || 'Download failed');
     }
 
-    // STEP 2: Extract and install bootstrap files, then start daemon
+    // STEP 2: Extract, install bootstrap files, then start daemon (with 30s timeout)
     splashState.phase = 'installing';
     updateSplashStatus('Installing blockchain files…');
     updateBootstrapUI('Installing blockchain files...', 100, null);
@@ -260,7 +282,7 @@ async function runBootstrapFlow() {
       throw new Error(applyResult.error || 'Install failed');
     }
 
-    // Done — daemon is now starting with bootstrap chain data
+    // Done — daemon started and responded within 30s
     bootstrapState.inProgress = false;
     bootstrapState.completed = true;
     updateBootstrapUI('Setup complete! Starting sync...', 100, null);

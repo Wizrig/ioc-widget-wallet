@@ -2,6 +2,10 @@ const { notarize } = require('@electron/notarize');
 const path = require('path');
 
 exports.default = async function notarizing(context) {
+  if (process.env.SKIP_NOTARIZE === 'true') {
+    console.log('[notarize] Skipping (SKIP_NOTARIZE=true)');
+    return;
+  }
   const { electronPlatformName, appOutDir } = context;
   if (electronPlatformName !== 'darwin') return;
 

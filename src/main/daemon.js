@@ -1,123 +1,183 @@
-const { spawn, execFile } = require('node:child_process');
+const { spawn, execFile, execFileSync, execSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { app, dialog } = require('electron');
 const { DATA_DIR, CONF_PATH, LAUNCH_AGENT } = require('../shared/constants');
 
-/**
- * Locate the iocoind binary.
- * Search order:
- * 1. Bundled in app resources (if exists)
- * 2. /usr/local/bin/iocoind
- * 3. /opt/homebrew/bin/iocoind (Apple Silicon)
- * 4. Windows Program Files paths
- * Returns { found: true, path: string } or { found: false, searched: string[] }
- */
+const DAEMON_PATH = '/usr/local/bin/iocoind';
+
+// ---------------------------------------------------------------------------
+// findDaemonBinary — only /usr/local/bin, never bundled
+// ---------------------------------------------------------------------------
 function findDaemonBinary() {
-  const candidates = [];
-
-  // 1. Check bundled binary in app resources
-  try {
-    const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-    const bundled = path.join(resourcesPath, 'iocoind');
-    candidates.push(bundled);
-    if (fs.existsSync(bundled)) {
-      return { found: true, path: bundled };
-    }
-  } catch (_) {}
-
-  // 2. Platform-specific system paths
-  if (process.platform === 'darwin' || process.platform === 'linux') {
-    const unixPaths = [
-      '/usr/local/bin/iocoind',
-      '/opt/homebrew/bin/iocoind',
-      path.join(process.env.HOME || '', 'bin', 'iocoind')
-    ];
-    for (const p of unixPaths) {
-      candidates.push(p);
-      if (fs.existsSync(p)) {
-        return { found: true, path: p };
-      }
-    }
-  } else if (process.platform === 'win32') {
-    const winPaths = [
-      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoind.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoind.exe'),
-      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin HTML5 Wallet', 'iocoind.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin HTML5 Wallet', 'iocoind.exe')
-    ];
-    for (const p of winPaths) {
-      candidates.push(p);
-      if (fs.existsSync(p)) {
-        return { found: true, path: p };
-      }
-    }
+  if (fs.existsSync(DAEMON_PATH)) {
+    return { found: true, path: DAEMON_PATH };
   }
-
-  return { found: false, searched: candidates };
+  return { found: false, searched: [DAEMON_PATH] };
 }
 
-/**
- * Locate the iocoin-cli binary.
- * Similar search order to findDaemonBinary.
- */
+// ---------------------------------------------------------------------------
+// findCliBinary — /usr/local/bin only (iocoin-cli fallback to iocoind)
+// ---------------------------------------------------------------------------
 function findCliBinary() {
-  const ext = process.platform === 'win32' ? '.exe' : '';
-  const candidates = [];
-
-  // Check bundled iocoin-cli first, then fall back to iocoind (which also accepts CLI commands)
-  try {
-    const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-    for (const name of ['iocoin-cli', 'iocoind']) {
-      const bundled = path.join(resourcesPath, name + ext);
-      candidates.push(bundled);
-      if (fs.existsSync(bundled)) {
-        return { found: true, path: bundled };
-      }
-    }
-  } catch (_) {}
-
-  if (process.platform === 'darwin' || process.platform === 'linux') {
-    const unixPaths = [
-      '/usr/local/bin/iocoin-cli',
-      '/opt/homebrew/bin/iocoin-cli',
-      '/usr/local/bin/iocoind',
-      '/opt/homebrew/bin/iocoind'
-    ];
-    for (const p of unixPaths) {
-      candidates.push(p);
-      if (fs.existsSync(p)) {
-        return { found: true, path: p };
-      }
-    }
-  } else if (process.platform === 'win32') {
-    const winPaths = [
-      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoin-cli.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoin-cli.exe'),
-      path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'IOCoin', 'iocoind.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'IOCoin', 'iocoind.exe')
-    ];
-    for (const p of winPaths) {
-      candidates.push(p);
-      if (fs.existsSync(p)) {
-        return { found: true, path: p };
-      }
-    }
+  const paths = ['/usr/local/bin/iocoin-cli', DAEMON_PATH];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return { found: true, path: p };
   }
-
-  return { found: false, searched: candidates };
+  return { found: false, searched: paths };
 }
 
-/**
- * Check if daemon is currently running by attempting a quick RPC ping.
- * Returns { running: true } or { running: false, error: string }
- */
+// ---------------------------------------------------------------------------
+// getBundledDaemonPath — where the install-source binary lives in the app
+// ---------------------------------------------------------------------------
+function getBundledDaemonPath() {
+  const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
+  return path.join(resourcesPath, 'iocoind');
+}
+
+// ---------------------------------------------------------------------------
+// installDaemonWithAdmin — privileged install via osascript
+// ---------------------------------------------------------------------------
+async function installDaemonWithAdmin() {
+  const src = getBundledDaemonPath();
+  if (!fs.existsSync(src)) {
+    throw new Error(`Bundled iocoind not found at: ${src}`);
+  }
+
+  // Escape double-quotes in paths for safe embedding in shell string
+  const srcEsc = src.replace(/"/g, '\\"');
+  const tgtEsc = DAEMON_PATH.replace(/"/g, '\\"');
+
+  const script = [
+    'mkdir -p /usr/local/bin',
+    `cp "${srcEsc}" "${tgtEsc}"`,
+    `chmod 755 "${tgtEsc}"`,
+    `xattr -dr com.apple.quarantine "${tgtEsc}"`
+  ].join(' && ');
+
+  console.log('[daemon] Installing iocoind with admin privileges...');
+  console.log('[daemon] Source:', src);
+  console.log('[daemon] Target:', DAEMON_PATH);
+
+  return new Promise((resolve, reject) => {
+    // osascript -e 'do shell script "..." with administrator privileges'
+    // The outer quotes are single-quotes; inner script uses double-quotes.
+    // Escape single-quotes in the script for AppleScript embedding.
+    const appleScript = `do shell script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" with administrator privileges`;
+    execFile('osascript', ['-e', appleScript], { timeout: 60000 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[daemon] Admin install failed:', err.message);
+        if (stderr) console.error('[daemon] stderr:', stderr);
+        reject(new Error(err.message || 'Admin install cancelled or failed'));
+      } else {
+        console.log('[daemon] Admin install succeeded');
+        resolve(true);
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// verifyDaemonBinary — confirm it exists, is executable, and can run
+// ---------------------------------------------------------------------------
+function verifyDaemonBinary() {
+  // 1. Exists?
+  if (!fs.existsSync(DAEMON_PATH)) {
+    return { ok: false, error: `iocoind not found at ${DAEMON_PATH}`, code: 'NOT_FOUND' };
+  }
+
+  // 2. Executable bit?
+  try {
+    const stats = fs.statSync(DAEMON_PATH);
+    if (!(stats.mode & 0o100)) {
+      return { ok: false, error: `${DAEMON_PATH} is not executable`, code: 'NOT_EXECUTABLE' };
+    }
+  } catch (e) {
+    return { ok: false, error: e.message, code: 'STAT_FAILED' };
+  }
+
+  // 3. Quick execution test (--help, 5s timeout)
+  try {
+    execFileSync(DAEMON_PATH, ['--help'], { timeout: 5000, stdio: 'pipe' });
+    console.log('[daemon] Verification passed: iocoind --help succeeded');
+    return { ok: true };
+  } catch (e) {
+    const stderr = (e.stderr || '').toString();
+    const exitCode = e.status;
+
+    // Rosetta detection: exit code 86 or "Bad CPU type"
+    if (exitCode === 86 || /bad cpu type/i.test(stderr) || /Bad CPU type/i.test(e.message)) {
+      return {
+        ok: false,
+        error: 'Rosetta 2 required. Run in Terminal:\nsoftwareupdate --install-rosetta --agree-to-license',
+        code: 'ROSETTA_NEEDED'
+      };
+    }
+
+    // iocoind --help may exit non-zero but still produce output (common for daemons)
+    // If it produced stdout, it ran successfully
+    const stdout = (e.stdout || '').toString();
+    if (stdout.length > 0) {
+      console.log('[daemon] Verification passed: iocoind --help produced output (exit', exitCode, ')');
+      return { ok: true };
+    }
+
+    // Permission denied
+    if (e.code === 'EACCES') {
+      return { ok: false, error: `Permission denied: ${DAEMON_PATH}`, code: 'EACCES' };
+    }
+
+    return {
+      ok: false,
+      error: `Verification failed (exit ${exitCode}): ${stderr || e.message}`,
+      code: 'EXEC_FAILED'
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ensureDaemon — install if missing, verify, return path or throw
+// ---------------------------------------------------------------------------
+async function ensureDaemon(sendStatus) {
+  const notify = sendStatus || (() => {});
+
+  // Check if already installed and verified
+  let verification = verifyDaemonBinary();
+  if (verification.ok) {
+    console.log('[daemon] iocoind verified at', DAEMON_PATH);
+    return DAEMON_PATH;
+  }
+
+  // Not installed or not working — need to install
+  if (verification.code === 'ROSETTA_NEEDED') {
+    throw new Error(verification.error);
+  }
+
+  console.log('[daemon] iocoind not ready:', verification.error);
+  notify('installing', 'Installing daemon (admin required)...');
+
+  // Attempt privileged install
+  await installDaemonWithAdmin();
+
+  // Re-verify after install
+  verification = verifyDaemonBinary();
+  if (!verification.ok) {
+    throw new Error(verification.error);
+  }
+
+  console.log('[daemon] iocoind installed and verified at', DAEMON_PATH);
+  return DAEMON_PATH;
+}
+
+// ---------------------------------------------------------------------------
+// isDaemonRunning — RPC check via CLI
+// ---------------------------------------------------------------------------
 function isDaemonRunning() {
   return new Promise((resolve) => {
     const cli = findCliBinary();
     if (!cli.found) {
-      resolve({ running: false, error: 'iocoin-cli not found' });
+      resolve({ running: false, error: 'CLI binary not found' });
       return;
     }
 
@@ -135,10 +195,12 @@ function isDaemonRunning() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// ensureConf — create data dir + iocoin.conf with rpcuser/rpcpassword
+// ---------------------------------------------------------------------------
 function ensureConf() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(CONF_PATH)) {
-    // Generate random password for RPC authentication
     const rpcPassword = crypto.randomBytes(32).toString('hex');
     const conf = [
       'rpcuser=iocoinrpc',
@@ -151,9 +213,85 @@ function ensureConf() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// startDetached — spawn daemon with logging
+// ---------------------------------------------------------------------------
+let daemonChild = null;
+let daemonSpawnError = null;
+let daemonEarlyExit = null;
+
+function startDetached(iocoindPath) {
+  ensureConf();
+  const usePath = iocoindPath || DAEMON_PATH;
+
+  // Reset state
+  daemonSpawnError = null;
+  daemonEarlyExit = null;
+
+  console.log('[daemon] Starting daemon from:', usePath);
+  console.log('[daemon] Data dir:', DATA_DIR);
+
+  try {
+    daemonChild = spawn(usePath, [`-datadir=${DATA_DIR}`], {
+      detached: true,
+      stdio: 'ignore'
+    });
+
+    const pid = daemonChild.pid;
+    console.log('[daemon] Spawned with PID:', pid);
+
+    daemonChild.on('error', (err) => {
+      console.error('[daemon] Spawn error:', err.message);
+      daemonSpawnError = err.message;
+    });
+
+    daemonChild.on('exit', (code, signal) => {
+      console.log('[daemon] Process exited — code:', code, 'signal:', signal);
+      daemonEarlyExit = { code, signal };
+    });
+
+    daemonChild.unref();
+
+    // Check for early crash after 5 seconds
+    setTimeout(() => {
+      if (daemonEarlyExit) {
+        console.error('[daemon] Early exit detected:', daemonEarlyExit);
+      }
+    }, 5000);
+
+    return true;
+  } catch (e) {
+    console.error('[daemon] startDetached failed:', e.message);
+    daemonSpawnError = e.message;
+    return false;
+  }
+}
+
+function getSpawnError() {
+  return daemonSpawnError;
+}
+
+function getEarlyExit() {
+  return daemonEarlyExit;
+}
+
+// ---------------------------------------------------------------------------
+// stopViaCli — stop daemon via RPC
+// ---------------------------------------------------------------------------
+function stopViaCli(iocCliPath) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(iocCliPath || DAEMON_PATH, ['stop', `-datadir=${DATA_DIR}`], { stdio: 'ignore' });
+    p.on('exit', (code) => code === 0 ? resolve(true) : reject(new Error('stop failed')));
+    p.on('error', (e) => reject(e));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Launch agent helpers (unchanged)
+// ---------------------------------------------------------------------------
 function writeLaunchAgent(iocoindPath) {
   const out = path.join(DATA_DIR, 'iocoind.out.log');
-  const err = path.join(DATA_DIR, 'iocoind.err.log');
+  const errLog = path.join(DATA_DIR, 'iocoind.err.log');
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -166,7 +304,7 @@ function writeLaunchAgent(iocoindPath) {
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${out}</string>
-  <key>StandardErrorPath</key><string>${err}</string>
+  <key>StandardErrorPath</key><string>${errLog}</string>
 </dict></plist>`;
   const dir = path.dirname(LAUNCH_AGENT);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -187,29 +325,8 @@ async function unloadLaunchAgent() {
   });
 }
 
-let child;
-
-function startDetached(iocoindPath) {
-  ensureConf();
-  if (child?.pid) return true;
-  try {
-    child = spawn(iocoindPath, [`-datadir=${DATA_DIR}`], { detached: true, stdio: 'ignore' });
-    child.unref();
-    return true;
-  } catch (e) {
-    dialog.showErrorBox('Daemon start failed', String(e));
-    return false;
-  }
-}
-
-function stopViaCli(iocCliPath) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(iocCliPath, ['stop', `-datadir=${DATA_DIR}`], { stdio: 'ignore' });
-    p.on('exit', (code) => code === 0 ? resolve(true) : reject(new Error('stop failed')));
-  });
-}
-
 module.exports = {
+  DAEMON_PATH,
   ensureConf,
   installLaunchAgent,
   unloadLaunchAgent,
@@ -217,5 +334,10 @@ module.exports = {
   stopViaCli,
   findDaemonBinary,
   findCliBinary,
-  isDaemonRunning
+  isDaemonRunning,
+  ensureDaemon,
+  verifyDaemonBinary,
+  installDaemonWithAdmin,
+  getSpawnError,
+  getEarlyExit
 };

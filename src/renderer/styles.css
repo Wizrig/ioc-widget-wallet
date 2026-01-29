@@ -486,10 +486,6 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 #tab-address .panel { background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 #tab-address .panel-inner { background: var(--panel2); }
 
-/* ===== DIONS Pane Glass ===== */
-#tab-dions .panel { background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
-#tab-dions .panel-inner { background: var(--panel2); }
-
 /* ===== Compact Widget Mode ===== */
 body.compact-mode {
   overflow: hidden;

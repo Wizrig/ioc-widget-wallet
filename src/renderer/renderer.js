@@ -233,28 +233,37 @@ async function runBootstrapFlow() {
     showBootstrapModal();
     updateBootstrapUI('Initializing wallet...', 0, null);
 
-    // Wait for daemon to be running and have created wallet.dat
-    // Give it up to 30 seconds to initialize
+    // Wait for daemon to be running AND responding to RPC
+    // This confirms wallet.dat and default files have been created
     console.log('[bootstrap] Waiting for daemon to initialize...');
     let daemonReady = false;
-    for (let i = 0; i < 30; i++) {
-      const status = await window.ioc.daemonStatus();
-      if (status.running) {
-        daemonReady = true;
-        console.log('[bootstrap] Daemon is running');
-        break;
-      }
-      updateBootstrapUI(`Waiting for daemon... (${i + 1}/30)`, 0, null);
+    for (let i = 0; i < 60; i++) {
+      try {
+        const status = await window.ioc.daemonStatus();
+        if (status.running) {
+          daemonReady = true;
+          console.log('[bootstrap] Daemon is responding to RPC at block:', status.blockCount);
+          break;
+        }
+      } catch (_) {}
+      updateBootstrapUI(`Waiting for daemon to initialize... (${i + 1}s)`, 0, null);
+      updateSplashStatus(`Starting daemon… (${i + 1}s)`);
       await new Promise(r => setTimeout(r, 1000));
     }
 
     if (!daemonReady) {
-      throw new Error('Daemon failed to start');
+      throw new Error('Daemon failed to start - RPC not responding');
     }
 
-    // Give daemon a few more seconds to create wallet.dat and default files
-    updateBootstrapUI('Creating wallet files...', 0, null);
-    await new Promise(r => setTimeout(r, 5000));
+    // Let daemon run for 60 seconds to create wallet.dat, sync initial peers,
+    // and begin processing blocks before we stop it for bootstrap
+    updateBootstrapUI('Daemon initializing files...', 0, null);
+    updateSplashStatus('Creating wallet files…');
+    console.log('[bootstrap] Letting daemon run for 60s to create default files...');
+    for (let i = 60; i > 0; i--) {
+      updateBootstrapUI(`Initializing wallet files... ${i}s`, 0, null);
+      await new Promise(r => setTimeout(r, 1000));
+    }
 
     // STEP 2: Download bootstrap while daemon is still running
     // Update splash to show downloading phase
@@ -710,7 +719,11 @@ async function refresh() {
       delay = getRetryDelay(connectionState.attempts);
       console.log(`[refresh] Connection failed, retry in ${delay}ms (attempt ${connectionState.attempts})`);
     } else {
-      const base = vp < 0.999 ? 1500 : 4000;
+      // Intel Macs need slower polling to avoid daemon performance issues
+      const isIntel = !navigator.userAgent.includes('ARM') && !navigator.platform?.includes('arm');
+      const base = vp < 0.999
+        ? (isIntel ? 5000 : 1500)   // syncing: 5s Intel, 1.5s ARM
+        : (isIntel ? 8000 : 4000);  // synced:  8s Intel, 4s ARM
       delay = isHidden ? Math.max(base, 10000) : base;
       if (timedOut) {
         delay = Math.max(delay, 6000);
@@ -2276,7 +2289,7 @@ async function loadHistory() {
 (function(){
   const KEY='IOC_SCROLL_TABS_V1'; if (window[KEY]) return; window[KEY]=true;
 
-  const targetTabs = ['history', 'address', 'dions', 'settings'];
+  const targetTabs = ['history', 'address', 'settings'];
 
   function getHeader(){
     return document.querySelector('header,[role="banner"],.topbar,.navbar,.app-header,.header');
@@ -2354,7 +2367,7 @@ async function loadHistory() {
         if (tag==='H1' || tag==='H2' || tag==='H3') return true;
         // Some themes use a title div; keep anything that literally says History / Wallet Tools / Address / Settings at the top.
         const txt = (n.textContent||'').trim().toLowerCase();
-        return /^history$|wallet\s*tools|address\s*book|dions|settings/.test(txt);
+        return /^history$|wallet\s*tools|address\s*book|settings/.test(txt);
       });
 
       // Move the rest of the nodes into the scroller, keep header in place
@@ -2394,7 +2407,7 @@ async function loadHistory() {
   new MutationObserver(kick).observe(document.documentElement, {childList:true, subtree:true});
 })();
 
-// --- IOC pane scroller (History / Address / DIONS / Settings) ---
+// --- IOC pane scroller (History / Address / Settings) ---
 (() => {
   if (window.__IOC_PANE_SCROLLERS__) return;  // guard against double-inject
   window.__IOC_PANE_SCROLLERS__ = true;
@@ -2438,7 +2451,7 @@ async function loadHistory() {
 
   function ensurePaneScrollers() {
     ensurePaneScrollCSS();
-    ['tab-history','tab-address','tab-dions','tab-settings'].forEach(id => {
+    ['tab-history','tab-address','tab-settings'].forEach(id => {
       const tab = document.getElementById(id);
       if (tab && !tab.classList.contains('hidden')) {
         ensureOneTabScroll(tab);
@@ -3070,39 +3083,6 @@ new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,
 })();
 // ===========================================================================
 
-
-// ===== IOC_HIDE_DIONS_V2 =====
-// Hide the "DIONS" nav pill and its pane without touching other tabs.
-(function () {
-  const hideDions = () => {
-    try {
-      // Hide nav button whose visible label is "DIONS"
-      document.querySelectorAll('button, a, div').forEach(el => {
-        if (!el.offsetParent) return;
-        const txt = (el.textContent || '').trim();
-        if (txt === 'DIONS') {
-          el.style.display = 'none';
-        }
-      });
-      // Hide any section/pane with a header titled "DIONS"
-      document.querySelectorAll('h1,h2,h3,h4').forEach(h => {
-        if ((h.textContent || '').trim() === 'DIONS') {
-          const card = h.closest('.card, .pane, section, div');
-          (card || h).style.display = 'none';
-        }
-      });
-      // If panes are routed by id, hide a likely DIONS container
-      const guess = document.querySelector('#dions, #dions-pane, [data-pane="dions"]');
-      if (guess) guess.style.display = 'none';
-    } catch (_) {}
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', hideDions);
-  } else {
-    hideDions();
-  }
-})();
-// ===== /IOC_HIDE_DIONS_V2 =====
 
 // === IOC UI: Theme paddings = Wallet Tools paddings (auto-sync) ===
 (function(){

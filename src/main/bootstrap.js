@@ -219,6 +219,12 @@ async function applyBootstrapFiles() {
       const srcPath = path.join(BOOTSTRAP_EXTRACT_DIR, file);
       const destPath = path.join(DATA_DIR, file);
 
+      // SAFETY: never overwrite wallet.dat — it may contain user keys
+      if (file === 'wallet.dat') {
+        console.log('[bootstrap] SKIPPING wallet.dat — protecting user keys');
+        continue;
+      }
+
       // Only copy chain data files (blk*.dat and txleveldb)
       if (/^blk\d+\.dat$/i.test(file) || file === 'txleveldb') {
         console.log(`[bootstrap] Copying ${file} to DATA_DIR`);

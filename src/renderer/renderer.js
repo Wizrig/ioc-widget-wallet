@@ -212,7 +212,7 @@ async function runBootstrapFlow() {
   if (bootstrapState.checked) return bootstrapState.needed;
 
   try {
-    // Check if bootstrap is needed
+    // Check if bootstrap is needed (no blk0001.dat in data folder)
     const needed = await window.ioc.needsBootstrap();
     bootstrapState.checked = true;
     bootstrapState.needed = needed;
@@ -222,86 +222,51 @@ async function runBootstrapFlow() {
       return false;
     }
 
-    console.log('[bootstrap] First run detected, starting bootstrap flow');
+    console.log('[bootstrap] No chain data found, starting bootstrap flow');
     bootstrapState.inProgress = true;
 
-    // STEP 1: Ensure daemon is running first to create wallet.dat and default files
-    // The daemon was started by initDaemon() in main.js, but we need to wait for it
-    // to initialize and create the default wallet files
-    splashState.phase = 'connecting';
-    updateSplashStatus('Starting daemon…');
-    showBootstrapModal();
-    updateBootstrapUI('Initializing wallet...', 0, null);
-
-    // Wait for daemon to be running, responding to RPC, and processing blocks.
-    // Once blocks > 0, wallet.dat and default files are confirmed created.
-    // No timeout - user may be dealing with Gatekeeper prompts on first run.
-    console.log('[bootstrap] Waiting for daemon to initialize and process blocks...');
-    let elapsed = 0;
-    while (true) {
-      try {
-        const status = await window.ioc.daemonStatus();
-        if (status.running && status.blockCount > 0) {
-          console.log('[bootstrap] Daemon initialized, at block:', status.blockCount);
-          break;
-        }
-      } catch (_) {}
-      elapsed++;
-      updateBootstrapUI(`Waiting for daemon to initialize... (${elapsed}s)`, 0, null);
-      updateSplashStatus(`Starting daemon… (${elapsed}s)`);
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    // STEP 2: Download bootstrap while daemon is still running
-    // Update splash to show downloading phase
+    // STEP 1: Download bootstrap (daemon has NOT been started yet)
     splashState.phase = 'downloading';
-    updateSplashStatus('Downloading bootstrap…');
-    updateBootstrapUI('Downloading chain data...', 0, null);
+    updateSplashStatus('Downloading blockchain data…');
+    showBootstrapModal();
+    updateBootstrapUI('Downloading blockchain data...', 0, null);
 
-    // Listen for progress events (both download and apply phases)
+    // Listen for progress events
     window.ioc.onBootstrapProgress((progress) => {
-      // Handle apply phase progress messages
       if (progress.step && progress.message) {
         updateBootstrapUI(progress.message, 100, null);
         updateSplashStatus(progress.message);
         return;
       }
-      // Handle download progress
       const pct = progress.percent || 0;
       const downloaded = formatBytes(progress.downloaded || 0);
       const total = formatBytes(progress.total || 0);
-      updateBootstrapUI(`Downloading chain data... (${downloaded} / ${total})`, pct, null);
-      // Also update splash status
-      updateSplashStatus(`Downloading bootstrap… ${pct}%`);
+      updateBootstrapUI(`Downloading blockchain data... (${downloaded} / ${total})`, pct, null);
+      updateSplashStatus(`Downloading blockchain… ${pct}%`);
     });
 
-    // Start download (daemon keeps running during download)
     const downloadResult = await window.ioc.downloadBootstrap();
     if (!downloadResult.ok) {
       throw new Error(downloadResult.error || 'Download failed');
     }
 
-    // STEP 3: Apply bootstrap (stop daemon, wait 2 min, replace files, restart)
+    // STEP 2: Extract and install bootstrap files, then start daemon
     splashState.phase = 'installing';
-    updateSplashStatus('Installing bootstrap…');
-    updateBootstrapUI('Installing chain data... (this will take ~2 minutes)', 100, null);
+    updateSplashStatus('Installing blockchain files…');
+    updateBootstrapUI('Installing blockchain files...', 100, null);
 
-    // applyBootstrap now handles: stop daemon → wait 2 min → replace files → restart
     const applyResult = await window.ioc.applyBootstrap();
     if (!applyResult.ok) {
-      throw new Error(applyResult.error || 'Apply failed');
+      throw new Error(applyResult.error || 'Install failed');
     }
 
-    // Done with bootstrap - transition to syncing phase
+    // Done — daemon is now starting with bootstrap chain data
     bootstrapState.inProgress = false;
     bootstrapState.completed = true;
-    updateBootstrapUI('Setup complete! Syncing blocks...', 100, null);
-
-    // Update splash for sync phase
-    splashState.phase = 'connecting'; // Will transition to 'syncing' when blocks come in
+    updateBootstrapUI('Setup complete! Starting sync...', 100, null);
+    splashState.phase = 'connecting';
     updateSplashStatus('Starting sync…');
 
-    // Wait a moment then hide modal
     await new Promise(r => setTimeout(r, 1500));
     hideBootstrapModal();
     return true;

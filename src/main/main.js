@@ -115,7 +115,6 @@ async function initDaemon() {
       const bundled = path.join(resourcesPath, 'iocoind');
       if (fs.existsSync(bundled)) {
         console.log('[daemon] Installing bundled iocoind to /usr/local/bin...');
-        // Ensure /usr/local/bin exists
         if (!fs.existsSync('/usr/local/bin')) {
           fs.mkdirSync('/usr/local/bin', { recursive: true });
         }
@@ -135,6 +134,20 @@ async function initDaemon() {
     daemonState.running = true;
     daemonState.startedByUs = false;
     return { ok: true, attached: true };
+  }
+
+  // Check if bootstrap is needed BEFORE starting daemon
+  // This ensures bootstrap chain files are in place so the daemon
+  // never creates its own empty defaults that would conflict.
+  if (bootstrap.needsBootstrap()) {
+    console.log('[daemon] Bootstrap needed — deferring daemon start to renderer flow');
+    daemonState.needsBootstrap = true;
+    // Find binary now so renderer knows we CAN start later
+    const binary = findDaemonBinary();
+    if (binary.found) {
+      daemonState.binaryPath = binary.path;
+    }
+    return { ok: true, deferred: true, needsBootstrap: true };
   }
 
   // Find daemon binary
@@ -198,9 +211,6 @@ ipcMain.handle('ioc:downloadBootstrap', async (event) => {
 });
 
 ipcMain.handle('ioc:applyBootstrap', async (event) => {
-  const { stopViaCli, startDetached, findDaemonBinary, findCliBinary, isDaemonRunning } = require('./daemon');
-
-  // Helper to send progress updates to renderer
   const sendProgress = (step, message) => {
     try {
       if (event.sender && !event.sender.isDestroyed()) {
@@ -212,68 +222,41 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
   try {
     // 1. Extract bootstrap to temp folder
     console.log('[bootstrap] Extracting bootstrap zip...');
-    sendProgress('extracting', 'Extracting bootstrap files...');
+    sendProgress('extracting', 'Extracting blockchain files...');
     const extractResult = await bootstrap.extractBootstrap();
     if (!extractResult.ok) {
       return extractResult;
     }
 
-    // 2. Stop daemon BEFORE copying files (required to modify chain data)
-    console.log('[bootstrap] Stopping daemon for bootstrap installation...');
-    sendProgress('stopping', 'Stopping daemon...');
-    const cli = findCliBinary();
-    if (cli.found) {
-      try {
-        await stopViaCli(cli.path);
-        // Wait for daemon to fully stop (up to 30 seconds)
-        let attempts = 0;
-        while (attempts < 60) {
-          await new Promise(r => setTimeout(r, 500));
-          const status = await isDaemonRunning();
-          if (!status.running) break;
-          attempts++;
-        }
-        console.log('[bootstrap] Daemon stopped');
-      } catch (_) {
-        // Daemon might not be running, that's OK
-        console.log('[bootstrap] Daemon was not running');
-      }
-    }
-
-    // 3. Wait 2 minutes for clean shutdown before replacing chain files
-    // This ensures wallet.dat and other files are properly written to disk
-    console.log('[bootstrap] Waiting 2 minutes for clean shutdown...');
-    const waitSeconds = 120;
-    for (let i = waitSeconds; i > 0; i--) {
-      sendProgress('waiting', `Waiting for clean shutdown... ${i}s`);
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    console.log('[bootstrap] Wait complete');
-
-    // 4. Apply bootstrap files (delete old, copy new)
-    console.log('[bootstrap] Applying bootstrap files to DATA_DIR...');
-    sendProgress('applying', 'Installing bootstrap chain data...');
+    // 2. Apply bootstrap files directly — daemon has NOT been started yet
+    // so no need to stop anything. Files go straight into DATA_DIR.
+    // applyBootstrapFiles() only copies blk*.dat and txleveldb/
+    // and NEVER touches wallet.dat.
+    console.log('[bootstrap] Installing bootstrap files to DATA_DIR...');
+    sendProgress('applying', 'Installing blockchain files...');
     const applyResult = await bootstrap.applyBootstrapFiles();
     if (!applyResult.ok) {
       return applyResult;
     }
 
-    // 5. Clean up temp files
+    // 3. Clean up temp files
     console.log('[bootstrap] Cleaning up temp files...');
     sendProgress('cleanup', 'Cleaning up...');
     bootstrap.cleanupBootstrap();
 
-    // 6. Restart daemon with new chain data
-    console.log('[bootstrap] Restarting daemon...');
-    sendProgress('restarting', 'Starting daemon with bootstrap data...');
+    // 4. Now start the daemon — it will boot with bootstrap chain data
+    console.log('[bootstrap] Starting daemon with bootstrap data...');
+    sendProgress('starting', 'Starting daemon...');
     const binary = findDaemonBinary();
     if (binary.found) {
       startDetached(binary.path);
       daemonState.startedByUs = true;
       daemonState.binaryPath = binary.path;
+      daemonState.running = true;
+      daemonState.needsBootstrap = false;
     }
 
-    return { ok: true, restarted: true };
+    return { ok: true, started: true };
   } catch (err) {
     console.error('[bootstrap] Apply error:', err);
     return { ok: false, error: err.message || String(err) };

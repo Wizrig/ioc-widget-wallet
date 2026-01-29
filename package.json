@@ -13,7 +13,7 @@
     "build": "electron-builder --mac dmg"
   },
   "build": {
-    "appId": "io.iocoin.wallet",
+    "appId": "IOdigital.IOwallet",
     "productName": "IOC Widget Wallet",
     "mac": {
       "icon": "assets/icon.icns",
@@ -24,6 +24,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
+    "afterSign": "build/notarize.js",
     "dmg": {
       "background": "assets/img/dmg-background.png",
       "iconSize": 80,
@@ -67,6 +68,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "electron": "^31.3.0",
     "electron-builder": "^24.13.3"
   }

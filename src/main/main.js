@@ -107,6 +107,27 @@ ipcMain.handle('ioc:daemonStatus', async () => {
 async function initDaemon() {
   ensureConf();
 
+  // Auto-install bundled iocoind to /usr/local/bin if not already there
+  const targetBin = '/usr/local/bin/iocoind';
+  if (!fs.existsSync(targetBin)) {
+    try {
+      const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
+      const bundled = path.join(resourcesPath, 'iocoind');
+      if (fs.existsSync(bundled)) {
+        console.log('[daemon] Installing bundled iocoind to /usr/local/bin...');
+        // Ensure /usr/local/bin exists
+        if (!fs.existsSync('/usr/local/bin')) {
+          fs.mkdirSync('/usr/local/bin', { recursive: true });
+        }
+        fs.copyFileSync(bundled, targetBin);
+        fs.chmodSync(targetBin, 0o755);
+        console.log('[daemon] iocoind installed to /usr/local/bin');
+      }
+    } catch (e) {
+      console.error('[daemon] Could not auto-install iocoind:', e.message);
+    }
+  }
+
   // Check if daemon is already running
   const status = await isDaemonRunning();
   if (status.running) {

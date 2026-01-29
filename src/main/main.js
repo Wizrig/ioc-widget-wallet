@@ -26,17 +26,11 @@ const {execFile} = require('child_process');
 let win;
 
 function findCli() {
-  const candidates = [
-    'iocoin-cli',
-    '/usr/local/bin/iocoin-cli',
-    '/opt/homebrew/bin/iocoin-cli',
-    '/usr/local/bin/iocoind',
-    '/opt/homebrew/bin/iocoind'
-  ];
-  for (const p of candidates) {
-    if (p.includes('/') && fs.existsSync(p)) return p;
-  }
-  return candidates[0];
+  const { findCliBinary } = require('./daemon');
+  const result = findCliBinary();
+  if (result.found) return result.path;
+  // Fallback: bare command name, let PATH resolve it
+  return process.platform === 'win32' ? 'iocoind.exe' : 'iocoin-cli';
 }
 
 function callCli(method, params = []) {
@@ -338,8 +332,20 @@ function findDaemonPid() {
     } catch (_) {}
   }
 
-  // Fallback: use pgrep on unix
-  if (process.platform !== 'win32') {
+  // Fallback: use platform-specific process lookup
+  if (process.platform === 'win32') {
+    try {
+      const output = execSync('tasklist /FI "IMAGENAME eq iocoind.exe" /FO CSV /NH', { encoding: 'utf8', timeout: 3000 });
+      const match = output.match(/"iocoind\.exe","(\d+)"/);
+      if (match) {
+        const pid = parseInt(match[1], 10);
+        if (pid > 0) {
+          console.log('[exit] Found daemon PID from tasklist:', pid);
+          return pid;
+        }
+      }
+    } catch (_) {}
+  } else {
     try {
       const output = execSync('pgrep -x iocoind', { encoding: 'utf8', timeout: 3000 });
       const pid = parseInt(output.trim().split('\n')[0], 10);
@@ -373,7 +379,15 @@ function killDaemonByPid(pid, signal) {
  * Force kill daemon by process name (last resort).
  */
 function killDaemonByName(signal) {
-  if (process.platform === 'win32') return false;
+  if (process.platform === 'win32') {
+    try {
+      console.log('[exit] Running taskkill /IM iocoind.exe /F');
+      execSync('taskkill /IM iocoind.exe /F', { timeout: 5000 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
   const sigFlag = signal === 'SIGKILL' ? '-KILL' : '-TERM';
   try {
     console.log(`[exit] Running pkill ${sigFlag} iocoind`);
@@ -757,58 +771,8 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
   });
 })();
 
-(()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{const home=process.env.HOME||require('os').homedir();const folder=`${home}/Library/Application Support/IOCoin/`;e.shell.openPath(folder)})})();
-(()=>{if(global.__iocDiagRegistered)return;global.__iocDiagRegistered=true;const e=require('electron');const cp=require('child_process');const procs=new Map();function start(wc){if(procs.has(wc.id))return;const p=cp.spawn('tail',['-F','-n0',`${process.env.HOME||require('os').homedir()}/Library/Application Support/IOCoin/debug.log`],{stdio:['ignore','pipe','pipe']});procs.set(wc.id,p);const send=d=>{try{wc.send('diag:data',String(d))}catch{}};p.stdout.on('data',send);p.stderr.on('data',send);p.on('close',()=>{procs.delete(wc.id)});wc.once('destroyed',()=>{try{p.kill()}catch{} procs.delete(wc.id)})}function stop(wc){const p=procs.get(wc.id);if(p){try{p.kill()}catch{} procs.delete(wc.id)}}e.ipcMain.on('diag:start',ev=>start(ev.sender));e.ipcMain.on('diag:stop',ev=>stop(ev.sender))})();
-
-// ===== IOC Wallet Backup IPC (idempotent) =====
-(() => {
-  try {
-    const { ipcMain, app, BrowserWindow, dialog } = require('electron');
-    const fs = require('fs');
-    const path = require('path');
-    if (ipcMain._iocBackupInstalled) return;
-    ipcMain._iocBackupInstalled = true;
-
-    const iocDataDir = () => {
-      const home = process.env.HOME || process.env.USERPROFILE || '';
-      if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'IOCoin');
-      if (process.platform === 'win32')  return path.join(process.env.APPDATA || path.join(home, 'AppData','Roaming'), 'IOCoin');
-      return path.join(home, '.IOCoin');
-    };
-    const walletDatPath = () => {
-      const base = iocDataDir();
-      const p1 = path.join(base, 'wallet.dat');
-      const p2 = path.join(base, 'wallets', 'wallet.dat');
-      if (fs.existsSync(p1)) return p1;
-      if (fs.existsSync(p2)) return p2;
-      return p1;
-    };
-
-    ipcMain.handle('ioc:wallet:getPath', async () => walletDatPath());
-
-    ipcMain.handle('ioc:wallet:backup', async () => {
-      try {
-        const src = walletDatPath();
-        if (!fs.existsSync(src)) return { ok:false, error:`wallet.dat not found at ${src}` };
-        const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-        const defPath = path.join(app.getPath('downloads'), `wallet-${ts}.dat`);
-        const win = BrowserWindow.getFocusedWindow();
-        const { canceled, filePath } = await dialog.showSaveDialog(win, {
-          title: 'Save wallet backup',
-          defaultPath: defPath,
-          buttonLabel: 'Save Backup',
-          filters: [{ name:'Wallet Dat', extensions:['dat'] }]
-        });
-        if (canceled || !filePath) return { ok:false, canceled:true };
-        fs.copyFileSync(src, filePath);
-        return { ok:true, src, savedTo:filePath };
-      } catch (e) {
-        return { ok:false, error: e?.message || String(e) };
-      }
-    });
-  } catch (_) {}
-})();
-// ===== end IPC =====
+(()=>{if(global.__iocSysRegistered)return;global.__iocSysRegistered=true;const e=require('electron');e.ipcMain.on('sys:openFolder',()=>{e.shell.openPath(DATA_DIR)})})();
+(()=>{if(global.__iocDiagRegistered)return;global.__iocDiagRegistered=true;const e=require('electron');const cp=require('child_process');const pathMod=require('path');const procs=new Map();const debugLog=pathMod.join(DATA_DIR,'debug.log');function start(wc){if(procs.has(wc.id))return;let p;if(process.platform==='win32'){p=cp.spawn('powershell.exe',['-Command',`Get-Content -Path "${debugLog}" -Wait -Tail 0`],{stdio:['ignore','pipe','pipe']})}else{p=cp.spawn('tail',['-F','-n0',debugLog],{stdio:['ignore','pipe','pipe']})}procs.set(wc.id,p);const send=d=>{try{wc.send('diag:data',String(d))}catch{}};p.stdout.on('data',send);p.stderr.on('data',send);p.on('close',()=>{procs.delete(wc.id)});wc.once('destroyed',()=>{try{p.kill()}catch{} procs.delete(wc.id)})}function stop(wc){const p=procs.get(wc.id);if(p){try{p.kill()}catch{} procs.delete(wc.id)}}e.ipcMain.on('diag:start',ev=>start(ev.sender));e.ipcMain.on('diag:stop',ev=>stop(ev.sender))})();
 
 // ===== IOC Wallet Backup IPC (idempotent) =====
 (() => {

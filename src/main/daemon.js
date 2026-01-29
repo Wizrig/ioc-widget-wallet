@@ -5,23 +5,69 @@ const crypto = require('node:crypto');
 const { app, dialog } = require('electron');
 const { DATA_DIR, CONF_PATH, LAUNCH_AGENT } = require('../shared/constants');
 
-const DAEMON_PATH = '/usr/local/bin/iocoind';
+// ---------------------------------------------------------------------------
+// Platform-aware daemon path
+// ---------------------------------------------------------------------------
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const DAEMON_NAME = IS_WIN ? 'iocoind.exe' : 'iocoind';
+const CLI_NAME = IS_WIN ? 'iocoin-cli.exe' : 'iocoin-cli';
+
+function getDaemonInstallPath() {
+  if (IS_MAC) return '/usr/local/bin/iocoind';
+  if (IS_WIN) {
+    const appData = process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local');
+    return path.join(appData, 'IOCoin', 'iocoind.exe');
+  }
+  // Linux
+  return '/usr/local/bin/iocoind';
+}
+
+const DAEMON_PATH = getDaemonInstallPath();
 
 // ---------------------------------------------------------------------------
-// findDaemonBinary — only /usr/local/bin, never bundled
+// findDaemonBinary — platform-aware search
 // ---------------------------------------------------------------------------
 function findDaemonBinary() {
+  // Check the install path first
   if (fs.existsSync(DAEMON_PATH)) {
     return { found: true, path: DAEMON_PATH };
   }
-  return { found: false, searched: [DAEMON_PATH] };
+
+  // Platform-specific fallback searches
+  const extraPaths = [];
+  if (IS_WIN) {
+    const progFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const progFiles86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    extraPaths.push(
+      path.join(progFiles, 'IOCoin', 'iocoind.exe'),
+      path.join(progFiles86, 'IOCoin', 'iocoind.exe')
+    );
+  }
+
+  for (const p of extraPaths) {
+    if (fs.existsSync(p)) return { found: true, path: p };
+  }
+
+  return { found: false, searched: [DAEMON_PATH, ...extraPaths] };
 }
 
 // ---------------------------------------------------------------------------
-// findCliBinary — /usr/local/bin only (iocoin-cli fallback to iocoind)
+// findCliBinary — platform-aware CLI search
 // ---------------------------------------------------------------------------
 function findCliBinary() {
-  const paths = ['/usr/local/bin/iocoin-cli', DAEMON_PATH];
+  const paths = [];
+
+  if (IS_MAC) {
+    paths.push('/usr/local/bin/iocoin-cli', DAEMON_PATH);
+  } else if (IS_WIN) {
+    const dir = path.dirname(DAEMON_PATH);
+    paths.push(path.join(dir, CLI_NAME), DAEMON_PATH);
+  } else {
+    // Linux
+    paths.push('/usr/local/bin/iocoin-cli', '/usr/bin/iocoin-cli', DAEMON_PATH);
+  }
+
   for (const p of paths) {
     if (fs.existsSync(p)) return { found: true, path: p };
   }
@@ -33,19 +79,33 @@ function findCliBinary() {
 // ---------------------------------------------------------------------------
 function getBundledDaemonPath() {
   const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-  return path.join(resourcesPath, 'iocoind');
+  return path.join(resourcesPath, DAEMON_NAME);
 }
 
 // ---------------------------------------------------------------------------
-// installDaemonWithAdmin — privileged install via osascript
+// installDaemonWithAdmin — privileged install (platform-aware)
 // ---------------------------------------------------------------------------
 async function installDaemonWithAdmin() {
   const src = getBundledDaemonPath();
   if (!fs.existsSync(src)) {
-    throw new Error(`Bundled iocoind not found at: ${src}`);
+    throw new Error(`Bundled ${DAEMON_NAME} not found at: ${src}`);
   }
 
-  // Escape double-quotes in paths for safe embedding in shell string
+  console.log('[daemon] Installing daemon with admin privileges...');
+  console.log('[daemon] Source:', src);
+  console.log('[daemon] Target:', DAEMON_PATH);
+
+  if (IS_MAC) {
+    return installDaemonMac(src);
+  } else if (IS_WIN) {
+    return installDaemonWin(src);
+  } else {
+    return installDaemonLinux(src);
+  }
+}
+
+// macOS: osascript with administrator privileges
+function installDaemonMac(src) {
   const srcEsc = src.replace(/"/g, '\\"');
   const tgtEsc = DAEMON_PATH.replace(/"/g, '\\"');
 
@@ -56,14 +116,7 @@ async function installDaemonWithAdmin() {
     `xattr -dr com.apple.quarantine "${tgtEsc}"`
   ].join(' && ');
 
-  console.log('[daemon] Installing iocoind with admin privileges...');
-  console.log('[daemon] Source:', src);
-  console.log('[daemon] Target:', DAEMON_PATH);
-
   return new Promise((resolve, reject) => {
-    // osascript -e 'do shell script "..." with administrator privileges'
-    // The outer quotes are single-quotes; inner script uses double-quotes.
-    // Escape single-quotes in the script for AppleScript embedding.
     const appleScript = `do shell script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" with administrator privileges`;
     execFile('osascript', ['-e', appleScript], { timeout: 60000 }, (err, stdout, stderr) => {
       if (err) {
@@ -78,36 +131,93 @@ async function installDaemonWithAdmin() {
   });
 }
 
+// Windows: copy to LocalAppData (no admin needed), or elevate via PowerShell
+function installDaemonWin(src) {
+  const targetDir = path.dirname(DAEMON_PATH);
+  return new Promise((resolve, reject) => {
+    try {
+      // Try non-elevated first (LocalAppData doesn't need admin)
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.copyFileSync(src, DAEMON_PATH);
+      console.log('[daemon] Install succeeded (non-elevated)');
+      resolve(true);
+    } catch (e) {
+      // If permission denied, try elevated via PowerShell
+      console.log('[daemon] Non-elevated install failed, trying elevated...');
+      const psScript = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','mkdir "${targetDir}" & copy /Y "${src}" "${DAEMON_PATH}"' -Verb RunAs -Wait`;
+      execFile('powershell.exe', ['-Command', psScript], { timeout: 60000 }, (err) => {
+        if (err) {
+          reject(new Error(err.message || 'Admin install cancelled or failed'));
+        } else {
+          console.log('[daemon] Admin install succeeded (elevated)');
+          resolve(true);
+        }
+      });
+    }
+  });
+}
+
+// Linux: pkexec or sudo for /usr/local/bin
+function installDaemonLinux(src) {
+  const script = `mkdir -p /usr/local/bin && cp "${src}" "${DAEMON_PATH}" && chmod 755 "${DAEMON_PATH}"`;
+
+  return new Promise((resolve, reject) => {
+    // Try pkexec first (graphical sudo prompt)
+    execFile('pkexec', ['sh', '-c', script], { timeout: 60000 }, (err) => {
+      if (err) {
+        // Fallback: try without elevation (might work if user owns /usr/local/bin)
+        try {
+          const targetDir = path.dirname(DAEMON_PATH);
+          if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+          fs.copyFileSync(src, DAEMON_PATH);
+          fs.chmodSync(DAEMON_PATH, 0o755);
+          console.log('[daemon] Install succeeded (non-elevated)');
+          resolve(true);
+        } catch (e2) {
+          reject(new Error(err.message || 'Admin install cancelled or failed'));
+        }
+      } else {
+        console.log('[daemon] Admin install succeeded (pkexec)');
+        resolve(true);
+      }
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // verifyDaemonBinary — confirm it exists, is executable, and can run
 // ---------------------------------------------------------------------------
 function verifyDaemonBinary() {
   // 1. Exists?
   if (!fs.existsSync(DAEMON_PATH)) {
-    return { ok: false, error: `iocoind not found at ${DAEMON_PATH}`, code: 'NOT_FOUND' };
+    return { ok: false, error: `${DAEMON_NAME} not found at ${DAEMON_PATH}`, code: 'NOT_FOUND' };
   }
 
-  // 2. Executable bit?
-  try {
-    const stats = fs.statSync(DAEMON_PATH);
-    if (!(stats.mode & 0o100)) {
-      return { ok: false, error: `${DAEMON_PATH} is not executable`, code: 'NOT_EXECUTABLE' };
+  // 2. Executable bit? (skip on Windows — .exe is always executable)
+  if (!IS_WIN) {
+    try {
+      const stats = fs.statSync(DAEMON_PATH);
+      if (!(stats.mode & 0o100)) {
+        return { ok: false, error: `${DAEMON_PATH} is not executable`, code: 'NOT_EXECUTABLE' };
+      }
+    } catch (e) {
+      return { ok: false, error: e.message, code: 'STAT_FAILED' };
     }
-  } catch (e) {
-    return { ok: false, error: e.message, code: 'STAT_FAILED' };
   }
 
   // 3. Quick execution test (--help, 5s timeout)
   try {
     execFileSync(DAEMON_PATH, ['--help'], { timeout: 5000, stdio: 'pipe' });
-    console.log('[daemon] Verification passed: iocoind --help succeeded');
+    console.log('[daemon] Verification passed: --help succeeded');
     return { ok: true };
   } catch (e) {
     const stderr = (e.stderr || '').toString();
     const exitCode = e.status;
 
-    // Rosetta detection: exit code 86 or "Bad CPU type"
-    if (exitCode === 86 || /bad cpu type/i.test(stderr) || /Bad CPU type/i.test(e.message)) {
+    // Rosetta detection (macOS only): exit code 86 or "Bad CPU type"
+    if (IS_MAC && (exitCode === 86 || /bad cpu type/i.test(stderr) || /Bad CPU type/i.test(e.message))) {
       return {
         ok: false,
         error: 'Rosetta 2 required. Run in Terminal:\nsoftwareupdate --install-rosetta --agree-to-license',
@@ -115,11 +225,10 @@ function verifyDaemonBinary() {
       };
     }
 
-    // iocoind --help may exit non-zero but still produce output (common for daemons)
-    // If it produced stdout, it ran successfully
+    // Daemon --help may exit non-zero but still produce output (common for daemons)
     const stdout = (e.stdout || '').toString();
     if (stdout.length > 0) {
-      console.log('[daemon] Verification passed: iocoind --help produced output (exit', exitCode, ')');
+      console.log('[daemon] Verification passed: --help produced output (exit', exitCode, ')');
       return { ok: true };
     }
 
@@ -145,7 +254,7 @@ async function ensureDaemon(sendStatus) {
   // Check if already installed and verified
   let verification = verifyDaemonBinary();
   if (verification.ok) {
-    console.log('[daemon] iocoind verified at', DAEMON_PATH);
+    console.log('[daemon] Daemon verified at', DAEMON_PATH);
     return DAEMON_PATH;
   }
 
@@ -154,7 +263,7 @@ async function ensureDaemon(sendStatus) {
     throw new Error(verification.error);
   }
 
-  console.log('[daemon] iocoind not ready:', verification.error);
+  console.log('[daemon] Daemon not ready:', verification.error);
   notify('installing', 'Installing daemon (admin required)...');
 
   // Attempt privileged install
@@ -166,7 +275,7 @@ async function ensureDaemon(sendStatus) {
     throw new Error(verification.error);
   }
 
-  console.log('[daemon] iocoind installed and verified at', DAEMON_PATH);
+  console.log('[daemon] Daemon installed and verified at', DAEMON_PATH);
   return DAEMON_PATH;
 }
 
@@ -181,7 +290,8 @@ function isDaemonRunning() {
       return;
     }
 
-    const child = execFile(cli.path, ['getblockcount', `-datadir=${DATA_DIR}`], { timeout: 3000 }, (err, stdout) => {
+    const args = ['getblockcount', `-datadir=${DATA_DIR}`];
+    const child = execFile(cli.path, args, { timeout: 3000 }, (err, stdout) => {
       if (err) {
         resolve({ running: false, error: err.message || 'daemon not responding' });
       } else {
@@ -232,10 +342,11 @@ function startDetached(iocoindPath) {
   console.log('[daemon] Data dir:', DATA_DIR);
 
   try {
-    daemonChild = spawn(usePath, [`-datadir=${DATA_DIR}`], {
-      detached: true,
-      stdio: 'ignore'
-    });
+    const spawnOpts = { stdio: 'ignore' };
+    // detached is not supported on Windows in the same way
+    if (!IS_WIN) spawnOpts.detached = true;
+
+    daemonChild = spawn(usePath, [`-datadir=${DATA_DIR}`], spawnOpts);
 
     const pid = daemonChild.pid;
     console.log('[daemon] Spawned with PID:', pid);
@@ -287,9 +398,10 @@ function stopViaCli(iocCliPath) {
 }
 
 // ---------------------------------------------------------------------------
-// Launch agent helpers (unchanged)
+// Launch agent helpers (macOS only)
 // ---------------------------------------------------------------------------
 function writeLaunchAgent(iocoindPath) {
+  if (!IS_MAC) return;
   const out = path.join(DATA_DIR, 'iocoind.out.log');
   const errLog = path.join(DATA_DIR, 'iocoind.err.log');
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -312,6 +424,7 @@ function writeLaunchAgent(iocoindPath) {
 }
 
 async function installLaunchAgent(iocoindPath) {
+  if (!IS_MAC) return true;
   ensureConf();
   writeLaunchAgent(iocoindPath);
   return new Promise((resolve, reject) => {
@@ -320,6 +433,7 @@ async function installLaunchAgent(iocoindPath) {
 }
 
 async function unloadLaunchAgent() {
+  if (!IS_MAC) return true;
   return new Promise((resolve, reject) => {
     execFile('launchctl', ['unload', LAUNCH_AGENT], (e) => e ? reject(e) : resolve(true));
   });

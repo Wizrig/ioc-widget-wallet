@@ -1,7 +1,7 @@
 {
   "name": "ioc-widget-wallet",
   "version": "0.1.0-RC5",
-  "description": "Minimal Electron front-end for iocoind on macOS",
+  "description": "Minimal Electron front-end for iocoind",
   "main": "src/main/main.js",
   "author": {
     "name": "Wizrig",
@@ -10,7 +10,10 @@
   "license": "MIT",
   "scripts": {
     "dev": "electron .",
-    "build": "electron-builder --mac dmg"
+    "build": "electron-builder --mac dmg",
+    "build:mac": "electron-builder --mac dmg",
+    "build:win": "electron-builder --win nsis",
+    "build:linux": "electron-builder --linux AppImage deb"
   },
   "build": {
     "appId": "io.iocoin.wallet",
@@ -22,7 +25,54 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extraResources": [
+        {
+          "from": "/Users/taino/Desktop/iocoind",
+          "to": "iocoind"
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "/Users/taino/Desktop/daemon-binaries/win64/iocoind.exe",
+          "to": "iocoind.exe"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "category": "Finance",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "/Users/taino/Desktop/daemon-binaries/linux64/iocoind",
+          "to": "iocoind"
+        }
+      ]
     },
     "afterSign": "build/notarize.js",
     "dmg": {
@@ -45,12 +95,6 @@
         }
       ]
     },
-    "extraResources": [
-      {
-        "from": "/Users/taino/Desktop/iocoind",
-        "to": "iocoind"
-      }
-    ],
     "files": [
       "src/**/*",
       "assets/**/*"

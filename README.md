@@ -11,6 +11,18 @@ Provides a lightweight GUI to interact with `iocoind`.
 
 ---
 
+## Before You Install
+
+**Back up your existing wallet data before installing or running this application.** If you have an existing I/O Coin wallet (legacy or otherwise), copy the entire data directory to a safe location first:
+
+- **macOS:** `~/Library/Application Support/IOCoin/`
+- **Windows:** `%APPDATA%\IOCoin\`
+- **Linux:** `~/.iocoin/`
+
+At minimum, back up `wallet.dat` — but copying the full directory ensures you can restore everything if needed. Store the backup on a separate drive or external media. This applies to fresh installs, upgrades, and switching between wallet versions.
+
+---
+
 ## Download & Install
 
 Download the latest release from [GitHub Releases](https://github.com/Wizrig/ioc-widget-wallet/releases/latest).

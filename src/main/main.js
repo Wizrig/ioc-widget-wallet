@@ -59,7 +59,10 @@ function callCli(method, params = []) {
 }
 
 async function safeRpc(method, params = [], fallback = null) {
-  try { return await callCli(method, params); } catch { return fallback; }
+  try {
+    const { rpc: httpRpc } = require('./rpc');
+    return await httpRpc(method, params);
+  } catch { return fallback; }
 }
 
 ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {

@@ -71,7 +71,7 @@ const { DATA_DIR, isFirstRun } = require('../shared/constants');
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, isDaemonProcessAlive,
         startDetached, ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError,
         getEarlyExit, getSpawnedPid, readSavedPid, cleanupPidFile,
-        validatePidIsIocoind } = require('./daemon');
+        validatePidIsIocoind, findDaemonPidByPgrep } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -331,20 +331,42 @@ async function showExitConfirmation(win) {
 }
 
 /**
- * Poll isDaemonRunning until it returns false or timeout.
+ * Poll until daemon process is truly dead (not just RPC unresponsive).
+ * Checks both RPC and process existence via PID + pgrep.
  * @param {number} timeoutMs - Max time to wait
  * @param {number} intervalMs - Poll interval
+ * @param {number|null} knownPid - PID to check directly (optional)
  * @returns {Promise<boolean>} - true if stopped, false if still running
  */
-async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
-  const { isDaemonRunning } = require('./daemon');
+async function waitForDaemonStop(timeoutMs, intervalMs = 500, knownPid = null) {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const status = await isDaemonRunning();
-    if (!status.running) {
-      console.log('[exit] Daemon confirmed stopped');
-      return true;
+    // Check 1: if we have a known PID, check if process is alive
+    if (knownPid) {
+      try {
+        process.kill(knownPid, 0);
+        // Still alive — wait
+        await new Promise(r => setTimeout(r, intervalMs));
+        continue;
+      } catch (_) {
+        // Process gone
+        console.log('[exit] Daemon PID', knownPid, 'confirmed dead');
+        return true;
+      }
     }
+
+    // Check 2: pgrep fallback — is any iocoind running for our datadir?
+    const pgrepPid = findDaemonPidByPgrep();
+    if (!pgrepPid) {
+      // Check 3: RPC also not responding
+      const { isDaemonRunning } = require('./daemon');
+      const status = await isDaemonRunning();
+      if (!status.running) {
+        console.log('[exit] Daemon confirmed stopped (no PID, no RPC)');
+        return true;
+      }
+    }
+
     await new Promise(r => setTimeout(r, intervalMs));
   }
   return false;
@@ -376,6 +398,13 @@ function findDaemonPid() {
   if (saved) {
     console.log('[exit] Found validated PID from file:', saved.pid);
     return saved.pid;
+  }
+
+  // Source 3: pgrep fallback — find iocoind with our datadir in command line
+  const pgrepPid = findDaemonPidByPgrep();
+  if (pgrepPid) {
+    console.log('[exit] Found validated PID from pgrep:', pgrepPid);
+    return pgrepPid;
   }
 
   console.log('[exit] No validated PID found');
@@ -434,7 +463,7 @@ async function stopDaemonAndQuitHard() {
     // We have a validated PID (confirmed iocoind for our datadir) — safe to kill
     console.log('[exit] CLI stop failed/timed out, sending SIGTERM to PID:', pid);
     killDaemonByPid(pid, 'SIGTERM');
-    let stopped = await waitForDaemonStop(10000, 500);
+    let stopped = await waitForDaemonStop(10000, 500, pid);
     if (stopped) {
       console.log('[exit] Daemon stopped after SIGTERM');
       cleanupPidFile();
@@ -445,7 +474,7 @@ async function stopDaemonAndQuitHard() {
     // Escalate to SIGKILL
     console.log('[exit] SIGTERM timed out, sending SIGKILL to PID:', pid);
     killDaemonByPid(pid, 'SIGKILL');
-    stopped = await waitForDaemonStop(5000, 500);
+    stopped = await waitForDaemonStop(5000, 500, pid);
     if (stopped) {
       console.log('[exit] Daemon stopped after SIGKILL');
       cleanupPidFile();

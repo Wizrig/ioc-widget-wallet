@@ -349,8 +349,10 @@ function savePidFile(pid) {
 }
 
 /**
- * Delete PID file. Called on: daemon exit event, graceful stop,
- * SIGTERM/SIGKILL confirmed dead.
+ * Delete PID file. Called ONLY when we have confirmed the daemon is dead
+ * (graceful stop confirmed, SIGTERM/SIGKILL confirmed dead).
+ * NEVER called blindly from exit handler — the exit event can fire
+ * when Electron quits even though iocoind is still running (detached).
  */
 function cleanupPidFile() {
   try {
@@ -376,7 +378,9 @@ function validatePidIsIocoind(pid) {
       const out = execSync(`ps -p ${pid} -o comm=`, {
         encoding: 'utf8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
       });
-      return out.trim() === 'iocoind';
+      // comm= may return just 'iocoind' or full path '/usr/local/bin/iocoind'
+      const name = path.basename(out.trim());
+      return name === 'iocoind';
     }
   } catch (_) {
     return false;
@@ -437,6 +441,72 @@ function readSavedPid() {
 }
 
 /**
+ * Fallback PID finder: use pgrep -f to find iocoind running with our datadir.
+ * This is the safety net when the PID file is missing (e.g. Electron quit
+ * and the exit handler cleaned it up, or the file was never written).
+ * Returns PID number or null.
+ */
+function findDaemonPidByPgrep() {
+  if (IS_WIN) {
+    // Windows: use wmic to find iocoind with our datadir in the command line
+    try {
+      const out = execSync(
+        `wmic process where "name='iocoind.exe'" get ProcessId,CommandLine /FORMAT:CSV`,
+        { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+      for (const line of out.split('\n')) {
+        if (line.includes(DATA_DIR) && line.includes('iocoind')) {
+          const match = line.match(/,(\d+)\s*$/);
+          if (match) {
+            const pid = parseInt(match[1], 10);
+            console.log('[pid] pgrep fallback found iocoind PID:', pid, '(Windows)');
+            return pid;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Unix: try datadir-scoped pgrep first, then fall back to any iocoind
+  // Case 1: daemon started with explicit -datadir= argument
+  try {
+    const out = execSync(`pgrep -f "iocoind.*-datadir=${DATA_DIR}"`, {
+      encoding: 'utf8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const pids = out.trim().split('\n').map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+    for (const pid of pids) {
+      if (validatePidIsIocoind(pid)) {
+        console.log('[pid] pgrep fallback found iocoind PID:', pid, '(datadir match)');
+        savePidFile(pid);
+        return pid;
+      }
+    }
+  } catch (_) {}
+
+  // Case 2: daemon started without -datadir= (uses system default)
+  // Only match if our DATA_DIR is the platform default
+  try {
+    const out = execSync('pgrep -x iocoind', {
+      encoding: 'utf8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const pids = out.trim().split('\n').map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+    for (const pid of pids) {
+      if (validatePidIsIocoind(pid)) {
+        // Verify this daemon is using our datadir by checking if DATA_DIR/.lock exists
+        const lockFile = path.join(DATA_DIR, '.lock');
+        if (fs.existsSync(lockFile)) {
+          console.log('[pid] pgrep fallback found iocoind PID:', pid, '(name match + lock file)');
+          savePidFile(pid);
+          return pid;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
  * Check if daemon process is alive using all available PID sources.
  * Returns { alive, pid, source } where source indicates how PID was found.
  *   - 'spawned': in-memory PID from our spawn
@@ -462,7 +532,14 @@ async function isDaemonProcessAlive() {
     return { alive: true, pid: saved.pid, source: 'pidfile' };
   }
 
-  // Source 3: RPC responds (daemon running but we don't have PID)
+  // Source 3: pgrep fallback — find iocoind with our datadir in command line
+  // This covers the case where PID file was lost (Electron quit cleaned it up)
+  const pgrepPid = findDaemonPidByPgrep();
+  if (pgrepPid) {
+    return { alive: true, pid: pgrepPid, source: 'pgrep' };
+  }
+
+  // Source 4: RPC responds (daemon running but we don't have PID)
   const rpcStatus = await isDaemonRunning();
   if (rpcStatus.running) {
     return { alive: true, pid: null, source: 'rpc' };
@@ -479,10 +556,17 @@ function startDetached(iocoindPath) {
   const usePath = iocoindPath || DAEMON_PATH;
 
   // Double-spawn prevention: check if a validated iocoind is already running
-  // for our datadir via PID file
+  // for our datadir via PID file OR pgrep fallback
   const existingPid = readSavedPid();
   if (existingPid) {
-    console.log('[daemon] Daemon already running (PID:', existingPid.pid, ') — not spawning');
+    console.log('[daemon] Daemon already running (PID:', existingPid.pid, ', source: pidfile) — not spawning');
+    return true; // Already running, treat as success
+  }
+
+  // Fallback: PID file may be gone but daemon might still be running
+  const pgrepPid = findDaemonPidByPgrep();
+  if (pgrepPid) {
+    console.log('[daemon] Daemon already running (PID:', pgrepPid, ', source: pgrep) — not spawning');
     return true; // Already running, treat as success
   }
 
@@ -535,7 +619,26 @@ function startDetached(iocoindPath) {
         daemonEarlyExit.lockError = true;
       }
 
-      cleanupPidFile();
+      // IMPORTANT: Do NOT blindly clean up PID file here.
+      // When Electron quits ("Close UI Only"), Node tears down the child
+      // handle and fires this exit event EVEN THOUGH iocoind is still running
+      // (because it was detached+unref'd). Cleaning up PID file here would
+      // make relaunch unable to find the running daemon.
+      //
+      // Only clean up if the process is truly dead (verify with kill(pid,0)).
+      const pidToCheck = daemonChild ? daemonChild.pid : null;
+      if (pidToCheck) {
+        try {
+          process.kill(pidToCheck, 0);
+          // Process still alive — do NOT clean up PID file
+          console.log('[daemon] Exit event fired but PID', pidToCheck, 'is still alive — keeping PID file');
+        } catch (_) {
+          // Process truly dead — safe to clean up
+          cleanupPidFile();
+        }
+      } else {
+        cleanupPidFile();
+      }
     });
 
     daemonChild.unref();
@@ -636,5 +739,6 @@ module.exports = {
   getEarlyExit,
   getSpawnedPid,
   readSavedPid,
-  cleanupPidFile
+  cleanupPidFile,
+  findDaemonPidByPgrep
 };

@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 
 let state = { unlocked: false, encrypted: null, peers: 0, synced: false, blocks: 0 };
+let lockOverrideUntil = 0; // timestamp — suppress polling lock overwrite until this time
 let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
@@ -622,7 +623,10 @@ async function refresh() {
 
     const locked = st?.lockst?.isLocked;
     const isEncrypted = st?.lockst?.isEncrypted;
-    if (typeof locked === 'boolean') setLock(!locked, typeof isEncrypted === 'boolean' ? isEncrypted : undefined);
+    // Skip lock state overwrite during grace period after user action
+    if (typeof locked === 'boolean' && Date.now() >= lockOverrideUntil) {
+      setLock(!locked, typeof isEncrypted === 'boolean' ? isEncrypted : undefined);
+    }
 
     // staking ON flag — only true when daemon reports actively staking (not just enabled)
     const stakingOn = !!(st?.staking?.staking);
@@ -758,6 +762,7 @@ async function doUnlock() {
     if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
     return;
   }
+  lockOverrideUntil = Date.now() + 20000;
   setLock(true);
   $('unlockModal').classList.add('hidden');
   $('pass').value = '';
@@ -807,11 +812,11 @@ async function onLockClick() {
     return;
   }
   if (state.unlocked) {
+    lockOverrideUntil = Date.now() + 20000;
     setLock(false);
     setStaking(false, 0, {}, 0);
-    refresh();
-    window.ioc.tryRpc('reservebalance', [true, 999999999]);
     window.ioc.tryRpc('walletlock', []);
+    window.ioc.tryRpc('reservebalance', [true, 999999999]);
   } else {
     $('unlockModal').classList.remove('hidden');
     setTimeout(() => $('pass').focus(), 0);

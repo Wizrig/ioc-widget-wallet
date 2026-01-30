@@ -744,18 +744,18 @@ function switchTab(name) {
 async function doUnlock() {
   const pass = ($('pass').value || '').trim(); if (!pass) return;
   $('unlockErr').textContent = '';
-  const result = await window.ioc.rpc('walletpassphrase', [pass, 9999999]);
-  if (result === null) {
+  const r = await window.ioc.tryRpc('walletpassphrase', [pass, 9999999]);
+  if (!r || !r.ok) {
     $('unlockErr').textContent = 'Wrong passphrase';
     const sheet = $('unlockSheet');
     if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
     return;
   }
-  await window.ioc.rpc('reservebalance', [false]);
   setLock(true);
   $('unlockModal').classList.add('hidden');
   $('pass').value = '';
   refresh();
+  window.ioc.rpc('reservebalance', [false]);
 }
 
 async function doEncrypt() {
@@ -800,13 +800,11 @@ async function onLockClick() {
     return;
   }
   if (state.unlocked) {
-    try {
-      await window.ioc.rpc('reservebalance', [true, 999999999]);
-      await window.ioc.rpc('walletlock', []);
-      setLock(false);
-      setStaking(false, 0, {}, 0);
-      refresh();
-    } catch {}
+    setLock(false);
+    setStaking(false, 0, {}, 0);
+    refresh();
+    window.ioc.rpc('reservebalance', [true, 999999999]);
+    window.ioc.rpc('walletlock', []);
   } else {
     $('unlockModal').classList.remove('hidden');
     setTimeout(() => $('pass').focus(), 0);

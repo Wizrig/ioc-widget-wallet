@@ -66,6 +66,11 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
   return await safeRpc(method, params, null);
 });
 
+ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
+  try { return { ok: true, result: await callCli(method, params) }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning,

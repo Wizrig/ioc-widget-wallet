@@ -750,11 +750,8 @@ async function doUnlock() {
     setTimeout(() => { setLock(true); $('unlockModal').classList.add('hidden'); $('pass').value=''; refresh(); }, 300);
   } catch {
     $('unlockErr').textContent = 'Wrong passphrase';
-    // Shake the modal sheet and lock icon to indicate wrong passphrase
     const sheet = $('unlockSheet');
     if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
-    const chip = $('ic-lock');
-    if (chip) { chip.classList.remove('shake'); void chip.offsetWidth; chip.classList.add('shake'); }
   }
 }
 

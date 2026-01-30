@@ -290,7 +290,7 @@ function isDaemonRunning() {
       return;
     }
 
-    const args = ['getblockcount', `-datadir=${DATA_DIR}`];
+    const args = ['getblockcount'];
     const child = execFile(cli.path, args, { timeout: 3000 }, (err, stdout) => {
       if (err) {
         resolve({ running: false, error: err.message || 'daemon not responding' });
@@ -350,7 +350,7 @@ function startDetached(iocoindPath) {
 // ---------------------------------------------------------------------------
 function stopViaCli(iocCliPath) {
   return new Promise((resolve, reject) => {
-    const p = spawn(iocCliPath || DAEMON_PATH, ['stop', `-datadir=${DATA_DIR}`], { stdio: 'ignore' });
+    const p = spawn(iocCliPath || DAEMON_PATH, ['stop'], { stdio: 'ignore' });
     p.on('exit', (code) => code === 0 ? resolve(true) : reject(new Error('stop failed')));
     p.on('error', (e) => reject(e));
   });

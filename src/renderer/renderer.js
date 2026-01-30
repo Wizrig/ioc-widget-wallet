@@ -744,7 +744,10 @@ function switchTab(name) {
 async function doUnlock() {
   const pass = ($('pass').value || '').trim(); if (!pass) return;
   $('unlockErr').textContent = '';
+  const btn = $('doUnlock');
+  if (btn) { btn.textContent = 'Unlocking\u2026'; btn.disabled = true; }
   const r = await window.ioc.tryRpc('walletpassphrase', [pass, 9999999]);
+  if (btn) { btn.textContent = 'Unlock'; btn.disabled = false; }
   if (!r || !r.ok) {
     $('unlockErr').textContent = 'Wrong passphrase';
     const sheet = $('unlockSheet');

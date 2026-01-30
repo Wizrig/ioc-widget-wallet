@@ -127,6 +127,17 @@ async function initDaemon() {
     return { ok: true, attached: true };
   }
 
+  // Step 2b: RPC failed — but the process may still be alive (busy syncing).
+  // Check pidfile / pgrep before spawning to avoid double-spawn.
+  const existingPid = findDaemonPid();
+  if (existingPid) {
+    console.log('[daemon] RPC unresponsive but process alive (PID', existingPid + '), attaching...');
+    daemonState.running = true;
+    daemonState.startedByUs = false;
+    daemonState.pid = existingPid;
+    return { ok: true, attached: true };
+  }
+
   // Step 3: Check if bootstrap is needed BEFORE starting daemon
   if (bootstrap.needsBootstrap()) {
     console.log('[daemon] Bootstrap needed — deferring daemon start to renderer flow');

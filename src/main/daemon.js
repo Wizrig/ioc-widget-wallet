@@ -291,7 +291,7 @@ function isDaemonRunning() {
     }
 
     const args = ['getblockcount'];
-    const child = execFile(cli.path, args, { timeout: 3000 }, (err, stdout) => {
+    const child = execFile(cli.path, args, { timeout: 8000 }, (err, stdout) => {
       if (err) {
         resolve({ running: false, error: err.message || 'daemon not responding' });
       } else {

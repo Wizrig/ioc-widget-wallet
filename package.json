@@ -84,11 +84,11 @@
       },
       "contents": [
         {
-          "x": 190,
+          "x": 140,
           "y": 190
         },
         {
-          "x": 350,
+          "x": 400,
           "y": 190,
           "type": "link",
           "path": "/Applications"

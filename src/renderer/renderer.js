@@ -281,10 +281,26 @@ async function runBootstrapFlow() {
 
     const applyResult = await window.ioc.applyBootstrap();
     if (!applyResult.ok) {
+      // If daemon didn't respond in time but was started, don't treat as fatal.
+      // The daemon may still be loading the block index — the normal refresh loop
+      // will detect it when it comes online and clear the splash.
+      const isTimeout = (applyResult.error || '').includes('did not respond');
+      if (isTimeout) {
+        console.log('[bootstrap] Daemon timeout during setup — continuing, will recover when RPC responds');
+        bootstrapState.inProgress = false;
+        bootstrapState.completed = true;
+        splashState.phase = 'connecting';
+        updateBootstrapUI('Loading block index… please wait', 100, null);
+        updateSplashStatus('Loading block index… please wait');
+        // Don't throw — fall through to normal refresh loop which will detect daemon
+        await new Promise(r => setTimeout(r, 2000));
+        hideBootstrapModal();
+        return true;
+      }
       throw new Error(applyResult.error || 'Install failed');
     }
 
-    // Done — daemon started and responded within 30s
+    // Done — daemon started and responded
     bootstrapState.inProgress = false;
     bootstrapState.completed = true;
     updateBootstrapUI('Setup complete! Starting sync...', 100, null);

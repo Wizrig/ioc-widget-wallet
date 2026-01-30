@@ -70,7 +70,7 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, startDetached,
         ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError, getEarlyExit,
-        getSpawnedPid } = require('./daemon');
+        getSpawnedPid, readSavedPid, cleanupPidFile } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -324,7 +324,7 @@ async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
  * @returns {number|null}
  */
 function findDaemonPid() {
-  // Check the PID we spawned first
+  // Check the PID we spawned first (in-memory)
   const spawnedPid = getSpawnedPid();
   if (spawnedPid) {
     try {
@@ -336,7 +336,14 @@ function findDaemonPid() {
     }
   }
 
-  // Check pidfile
+  // Check app-saved PID file (survives app restart)
+  const savedPid = readSavedPid();
+  if (savedPid) {
+    console.log('[exit] Found saved daemon PID:', savedPid);
+    return savedPid;
+  }
+
+  // Check daemon's own pidfile
   const pidFile = path.join(DATA_DIR, 'iocoind.pid');
   if (fs.existsSync(pidFile)) {
     try {
@@ -437,42 +444,47 @@ async function stopDaemonAndQuitHard() {
     const stopped = await waitForDaemonStop(20000, 500);
     if (stopped) {
       console.log('[exit] Daemon stopped gracefully');
+      cleanupPidFile();
       app.exit(0);
       return;
     }
   }
 
-  // Step B: Try SIGTERM by PID
+  // Step A2: If CLI stop failed, try kill by PID immediately
+  // (daemon may not respond to RPC during block loading)
   let pid = findDaemonPid();
   if (pid) {
+    console.log('[exit] CLI stop failed or timed out, trying SIGTERM on PID:', pid);
     killDaemonByPid(pid, 'SIGTERM');
     const stopped = await waitForDaemonStop(10000, 500);
     if (stopped) {
       console.log('[exit] Daemon stopped after SIGTERM');
+      cleanupPidFile();
       app.exit(0);
       return;
     }
-
     // Try SIGKILL
     killDaemonByPid(pid, 'SIGKILL');
     const stoppedKill = await waitForDaemonStop(5000, 500);
     if (stoppedKill) {
       console.log('[exit] Daemon stopped after SIGKILL');
+      cleanupPidFile();
       app.exit(0);
       return;
     }
   }
 
-  // Step C: Last resort - pkill by name
+  // Step B: Last resort - pkill by name
   const status = await isDaemonRunning();
   if (status.running) {
-    console.log('[exit] Daemon still running, using pkill...');
+    console.log('[exit] Daemon still running, using pkill/taskkill...');
     killDaemonByName('SIGTERM');
     let stopped = await waitForDaemonStop(5000, 500);
     if (!stopped) {
       killDaemonByName('SIGKILL');
       stopped = await waitForDaemonStop(3000, 500);
     }
+    if (stopped) cleanupPidFile();
   }
 
   // Step D: Quit regardless

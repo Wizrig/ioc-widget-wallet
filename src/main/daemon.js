@@ -330,6 +330,38 @@ let daemonChild = null;
 let daemonSpawnError = null;
 let daemonEarlyExit = null;
 
+function getAppPidFile() {
+  return path.join(DATA_DIR, 'iocoind.app.pid');
+}
+
+function savePidFile(pid) {
+  try {
+    fs.writeFileSync(getAppPidFile(), String(pid));
+  } catch (_) {}
+}
+
+function readSavedPid() {
+  try {
+    const pidStr = fs.readFileSync(getAppPidFile(), 'utf8').trim();
+    const pid = parseInt(pidStr, 10);
+    if (pid > 0) {
+      // Verify process still exists
+      try {
+        process.kill(pid, 0);
+        return pid;
+      } catch (_) {
+        // Process doesn't exist, clean up
+        try { fs.unlinkSync(getAppPidFile()); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function cleanupPidFile() {
+  try { fs.unlinkSync(getAppPidFile()); } catch (_) {}
+}
+
 function startDetached(iocoindPath) {
   ensureConf();
   const usePath = iocoindPath || DAEMON_PATH;
@@ -350,6 +382,7 @@ function startDetached(iocoindPath) {
 
     const pid = daemonChild.pid;
     console.log('[daemon] Spawned with PID:', pid);
+    savePidFile(pid);
 
     daemonChild.on('error', (err) => {
       console.error('[daemon] Spawn error:', err.message);
@@ -359,6 +392,7 @@ function startDetached(iocoindPath) {
     daemonChild.on('exit', (code, signal) => {
       console.log('[daemon] Process exited — code:', code, 'signal:', signal);
       daemonEarlyExit = { code, signal };
+      cleanupPidFile();
     });
 
     daemonChild.unref();
@@ -458,5 +492,7 @@ module.exports = {
   installDaemonWithAdmin,
   getSpawnError,
   getEarlyExit,
-  getSpawnedPid
+  getSpawnedPid,
+  readSavedPid,
+  cleanupPidFile
 };

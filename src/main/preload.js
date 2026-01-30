@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('ioc', {
   isFirstRun: () => ipcRenderer.invoke('ioc:isFirstRun'),
   // Daemon status
   daemonStatus: () => ipcRenderer.invoke('ioc:daemonStatus'),
+  // Process alive check (for warmup polling — not RPC, just PID validation)
+  isDaemonProcessAlive: () => ipcRenderer.invoke('ioc:isDaemonProcessAlive'),
   // Open external URL
   openExternal: (url) => ipcRenderer.invoke('ioc:openExternal', url),
   // Bootstrap functions

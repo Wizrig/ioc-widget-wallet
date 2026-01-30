@@ -324,7 +324,7 @@ function ensureConf() {
 }
 
 // ---------------------------------------------------------------------------
-// startDetached — spawn daemon with logging
+// PID persistence — JSON format { pid, datadir, startedAt }
 // ---------------------------------------------------------------------------
 let daemonChild = null;
 let daemonSpawnError = null;
@@ -334,37 +334,157 @@ function getAppPidFile() {
   return path.join(DATA_DIR, 'iocoind.app.pid');
 }
 
+/**
+ * Write PID file immediately after spawn (synchronous).
+ * Format: JSON { pid, datadir, startedAt }
+ */
 function savePidFile(pid) {
   try {
-    fs.writeFileSync(getAppPidFile(), String(pid));
+    const data = JSON.stringify({ pid, datadir: DATA_DIR, startedAt: Date.now() });
+    fs.writeFileSync(getAppPidFile(), data);
+    console.log('[pid] Saved PID file:', data);
+  } catch (e) {
+    console.error('[pid] Failed to save PID file:', e.message);
+  }
+}
+
+/**
+ * Delete PID file. Called on: daemon exit event, graceful stop,
+ * SIGTERM/SIGKILL confirmed dead.
+ */
+function cleanupPidFile() {
+  try {
+    fs.unlinkSync(getAppPidFile());
+    console.log('[pid] Cleaned up PID file');
   } catch (_) {}
 }
 
+/**
+ * Validate that a PID belongs to iocoind.
+ * Uses ps (Unix) or tasklist (Windows) to confirm process name.
+ * @param {number} pid
+ * @returns {boolean}
+ */
+function validatePidIsIocoind(pid) {
+  try {
+    if (IS_WIN) {
+      const out = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, {
+        encoding: 'utf8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return out.toLowerCase().includes('iocoind');
+    } else {
+      const out = execSync(`ps -p ${pid} -o comm=`, {
+        encoding: 'utf8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return out.trim() === 'iocoind';
+    }
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Read and fully validate the saved PID file.
+ * Checks: file exists, JSON valid, datadir matches, process alive, process is iocoind.
+ * @returns {{ pid: number, datadir: string, startedAt: number } | null}
+ */
 function readSavedPid() {
   try {
-    const pidStr = fs.readFileSync(getAppPidFile(), 'utf8').trim();
-    const pid = parseInt(pidStr, 10);
-    if (pid > 0) {
-      // Verify process still exists
-      try {
-        process.kill(pid, 0);
-        return pid;
-      } catch (_) {
-        // Process doesn't exist, clean up
-        try { fs.unlinkSync(getAppPidFile()); } catch (_) {}
+    const raw = fs.readFileSync(getAppPidFile(), 'utf8').trim();
+    let record;
+    try {
+      record = JSON.parse(raw);
+    } catch (_) {
+      // Legacy plain-number format — migrate or discard
+      const pid = parseInt(raw, 10);
+      if (pid > 0) {
+        record = { pid, datadir: DATA_DIR, startedAt: 0 };
+      } else {
+        cleanupPidFile();
+        return null;
       }
     }
+
+    const { pid, datadir } = record;
+
+    // Reject if datadir doesn't match ours
+    if (datadir && datadir !== DATA_DIR) {
+      console.log('[pid] PID file datadir mismatch:', datadir, '!==', DATA_DIR);
+      cleanupPidFile();
+      return null;
+    }
+
+    // Check process exists
+    try {
+      process.kill(pid, 0);
+    } catch (_) {
+      console.log('[pid] PID', pid, 'no longer exists');
+      cleanupPidFile();
+      return null;
+    }
+
+    // Validate process name is iocoind
+    if (!validatePidIsIocoind(pid)) {
+      console.log('[pid] PID', pid, 'exists but is not iocoind (recycled PID)');
+      cleanupPidFile();
+      return null;
+    }
+
+    console.log('[pid] Validated PID:', pid, 'is iocoind for datadir:', datadir);
+    return record;
   } catch (_) {}
   return null;
 }
 
-function cleanupPidFile() {
-  try { fs.unlinkSync(getAppPidFile()); } catch (_) {}
+/**
+ * Check if daemon process is alive using all available PID sources.
+ * Returns { alive, pid, source } where source indicates how PID was found.
+ *   - 'spawned': in-memory PID from our spawn
+ *   - 'pidfile': from iocoind.app.pid (validated)
+ *   - 'rpc': RPC responded but no PID (external daemon)
+ *   - null: not alive
+ */
+async function isDaemonProcessAlive() {
+  // Source 1: in-memory spawned PID
+  const spawnedPid = daemonChild ? daemonChild.pid : null;
+  if (spawnedPid) {
+    try {
+      process.kill(spawnedPid, 0);
+      if (validatePidIsIocoind(spawnedPid)) {
+        return { alive: true, pid: spawnedPid, source: 'spawned' };
+      }
+    } catch (_) {}
+  }
+
+  // Source 2: persisted PID file (validated: datadir + process name)
+  const saved = readSavedPid();
+  if (saved) {
+    return { alive: true, pid: saved.pid, source: 'pidfile' };
+  }
+
+  // Source 3: RPC responds (daemon running but we don't have PID)
+  const rpcStatus = await isDaemonRunning();
+  if (rpcStatus.running) {
+    return { alive: true, pid: null, source: 'rpc' };
+  }
+
+  return { alive: false, pid: null, source: null };
 }
 
+// ---------------------------------------------------------------------------
+// startDetached — spawn daemon with double-spawn prevention
+// ---------------------------------------------------------------------------
 function startDetached(iocoindPath) {
   ensureConf();
   const usePath = iocoindPath || DAEMON_PATH;
+
+  // Double-spawn prevention: check if a validated iocoind is already running
+  // for our datadir via PID file
+  const existingPid = readSavedPid();
+  if (existingPid) {
+    console.log('[daemon] Daemon already running (PID:', existingPid.pid, ') — not spawning');
+    return true; // Already running, treat as success
+  }
 
   // Reset state
   daemonSpawnError = null;
@@ -374,7 +494,7 @@ function startDetached(iocoindPath) {
   console.log('[daemon] Data dir:', DATA_DIR);
 
   try {
-    const spawnOpts = { stdio: 'ignore' };
+    const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
     // detached is not supported on Windows in the same way
     if (!IS_WIN) spawnOpts.detached = true;
 
@@ -382,7 +502,23 @@ function startDetached(iocoindPath) {
 
     const pid = daemonChild.pid;
     console.log('[daemon] Spawned with PID:', pid);
+
+    // Save PID file IMMEDIATELY after spawn (synchronous write)
     savePidFile(pid);
+
+    // Capture stderr briefly to detect lock errors
+    let stderrBuf = '';
+    if (daemonChild.stderr) {
+      daemonChild.stderr.on('data', (chunk) => {
+        stderrBuf += chunk.toString();
+      });
+      // Stop collecting after 5s to avoid memory leak
+      setTimeout(() => {
+        if (daemonChild.stderr) {
+          daemonChild.stderr.removeAllListeners('data');
+        }
+      }, 5000);
+    }
 
     daemonChild.on('error', (err) => {
       console.error('[daemon] Spawn error:', err.message);
@@ -392,17 +528,20 @@ function startDetached(iocoindPath) {
     daemonChild.on('exit', (code, signal) => {
       console.log('[daemon] Process exited — code:', code, 'signal:', signal);
       daemonEarlyExit = { code, signal };
+
+      // Check if exit was due to lock error (another daemon for our datadir)
+      if (stderrBuf.includes('Cannot obtain a lock')) {
+        console.log('[daemon] Lock error detected — another daemon owns our datadir');
+        daemonEarlyExit.lockError = true;
+      }
+
       cleanupPidFile();
     });
 
     daemonChild.unref();
-
-    // Check for early crash after 5 seconds
-    setTimeout(() => {
-      if (daemonEarlyExit) {
-        console.error('[daemon] Early exit detected:', daemonEarlyExit);
-      }
-    }, 5000);
+    // Also unref stdio streams to not block exit
+    if (daemonChild.stdout) daemonChild.stdout.unref();
+    if (daemonChild.stderr) daemonChild.stderr.unref();
 
     return true;
   } catch (e) {
@@ -479,6 +618,7 @@ async function unloadLaunchAgent() {
 
 module.exports = {
   DAEMON_PATH,
+  DATA_DIR,
   ensureConf,
   installLaunchAgent,
   unloadLaunchAgent,
@@ -487,9 +627,11 @@ module.exports = {
   findDaemonBinary,
   findCliBinary,
   isDaemonRunning,
+  isDaemonProcessAlive,
   ensureDaemon,
   verifyDaemonBinary,
   installDaemonWithAdmin,
+  validatePidIsIocoind,
   getSpawnError,
   getEarlyExit,
   getSpawnedPid,

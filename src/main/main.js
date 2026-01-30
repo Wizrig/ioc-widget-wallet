@@ -63,7 +63,7 @@ async function safeRpc(method, params = [], fallback = null) {
 }
 
 ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
-  return await callCli(method, params);
+  return await safeRpc(method, params, null);
 });
 
 // ===== First-run and data directory IPC handlers =====

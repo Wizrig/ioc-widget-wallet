@@ -386,6 +386,10 @@ function getEarlyExit() {
   return daemonEarlyExit;
 }
 
+function getSpawnedPid() {
+  return daemonChild ? daemonChild.pid : null;
+}
+
 // ---------------------------------------------------------------------------
 // stopViaCli — stop daemon via RPC
 // ---------------------------------------------------------------------------
@@ -453,5 +457,6 @@ module.exports = {
   verifyDaemonBinary,
   installDaemonWithAdmin,
   getSpawnError,
-  getEarlyExit
+  getEarlyExit,
+  getSpawnedPid
 };

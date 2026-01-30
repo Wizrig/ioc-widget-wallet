@@ -220,10 +220,10 @@ async function runBootstrapFlow() {
     if (!needed) {
       console.log('[bootstrap] Not needed, chain data exists');
       // No bootstrap needed — but daemon might not be running yet.
-      // Wait for it to come online (30s timeout).
+      // Wait for it to come online (120s timeout — block index loading can take time).
       splashState.phase = 'connecting';
       updateSplashStatus('Connecting to daemon…');
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 120; i++) {
         try {
           const status = await window.ioc.daemonStatus();
           if (status.running) {
@@ -237,10 +237,12 @@ async function runBootstrapFlow() {
             return false;
           }
         } catch (_) {}
-        updateSplashStatus(`Connecting to daemon… (${i + 1}s)`);
+        const msg = i < 10 ? `Connecting to daemon… (${i + 1}s)` :
+                    `Loading block index… (${i + 1}s)`;
+        updateSplashStatus(msg);
         await new Promise(r => setTimeout(r, 1000));
       }
-      updateSplashStatus('Daemon not responding after 30s');
+      updateSplashStatus('Daemon not responding after 120s');
       return false;
     }
 
@@ -624,8 +626,8 @@ async function refresh() {
     const locked = st?.lockst?.isLocked;
     if (typeof locked === 'boolean') setLock(!locked);
 
-    // staking ON flag (unchanged)
-    const stakingOn = !!(st?.staking?.staking || st?.staking?.enabled);
+    // staking ON flag — only true when daemon reports actively staking (not just enabled)
+    const stakingOn = !!(st?.staking?.staking);
     // staking AMOUNT (prefer getinfo.stake, fallback to getstakinginfo fields)
     const stakingAmt = Number(
       (typeof info.stake !== 'undefined') ? info.stake :

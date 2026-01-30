@@ -69,7 +69,8 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, startDetached,
-        ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError, getEarlyExit } = require('./daemon');
+        ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError, getEarlyExit,
+        getSpawnedPid } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -234,11 +235,14 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
     daemonState.binaryPath = DAEMON_PATH;
     daemonState.needsBootstrap = false;
 
-    // 5. Poll for daemon to become responsive (30s timeout)
+    // 5. Poll for daemon to become responsive (120s timeout)
+    // After bootstrap with large chain data, the daemon needs time to load the block index
     console.log('[bootstrap] Waiting for daemon to respond...');
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1000));
-      sendProgress('starting', `Starting daemon... (${i + 1}s)`);
+      const msg = i < 10 ? `Starting daemon... (${i + 1}s)` :
+                  `Loading block index... (${i + 1}s)`;
+      sendProgress('starting', msg);
       const status = await isDaemonRunning();
       if (status.running) {
         console.log('[bootstrap] Daemon is running, block count:', status.blockCount);
@@ -256,7 +260,7 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
     }
 
     // Timeout
-    return { ok: false, error: 'Daemon did not respond within 30 seconds' };
+    return { ok: false, error: 'Daemon did not respond within 120 seconds' };
   } catch (err) {
     console.error('[bootstrap] Apply error:', err);
     return { ok: false, error: err.message || String(err) };
@@ -320,6 +324,18 @@ async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
  * @returns {number|null}
  */
 function findDaemonPid() {
+  // Check the PID we spawned first
+  const spawnedPid = getSpawnedPid();
+  if (spawnedPid) {
+    try {
+      process.kill(spawnedPid, 0); // signal 0 = check if process exists
+      console.log('[exit] Found spawned daemon PID:', spawnedPid);
+      return spawnedPid;
+    } catch (_) {
+      // Process no longer exists
+    }
+  }
+
   // Check pidfile
   const pidFile = path.join(DATA_DIR, 'iocoind.pid');
   if (fs.existsSync(pidFile)) {

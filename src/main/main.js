@@ -67,8 +67,10 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 });
 
 ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
-  try { return { ok: true, result: await callCli(method, params) }; }
-  catch (e) { return { ok: false, error: e.message }; }
+  try {
+    const { rpc: httpRpc } = require('./rpc');
+    return { ok: true, result: await httpRpc(method, params) };
+  } catch (e) { return { ok: false, error: e.message }; }
 });
 
 // ===== First-run and data directory IPC handlers =====

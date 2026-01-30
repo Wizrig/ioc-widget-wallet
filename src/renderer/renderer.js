@@ -755,7 +755,7 @@ async function doUnlock() {
   $('unlockModal').classList.add('hidden');
   $('pass').value = '';
   refresh();
-  window.ioc.rpc('reservebalance', [false]);
+  window.ioc.tryRpc('reservebalance', [false]);
 }
 
 async function doEncrypt() {
@@ -803,8 +803,8 @@ async function onLockClick() {
     setLock(false);
     setStaking(false, 0, {}, 0);
     refresh();
-    window.ioc.rpc('reservebalance', [true, 999999999]);
-    window.ioc.rpc('walletlock', []);
+    window.ioc.tryRpc('reservebalance', [true, 999999999]);
+    window.ioc.tryRpc('walletlock', []);
   } else {
     $('unlockModal').classList.remove('hidden');
     setTimeout(() => $('pass').focus(), 0);

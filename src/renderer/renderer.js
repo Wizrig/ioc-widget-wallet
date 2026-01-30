@@ -414,7 +414,7 @@ function setLock(unlocked, encrypted) {
   if (state.encrypted === false) {
     // Unencrypted wallet — grey lock, open padlock shape
     p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
-    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is not encrypted (click to encrypt)'; }
+    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is unencrypted (click to encrypt it)'; }
   } else if (state.unlocked) {
     p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
     if (chip) { chip.classList.add('ok'); chip.title = 'Wallet unlocked'; }
@@ -748,7 +748,14 @@ async function doUnlock() {
     await window.ioc.rpc('walletpassphrase', [pass, 9999999]);
     await window.ioc.rpc('reservebalance', [false]);
     setTimeout(() => { setLock(true); $('unlockModal').classList.add('hidden'); $('pass').value=''; refresh(); }, 300);
-  } catch { $('unlockErr').textContent = 'Wrong passphrase'; }
+  } catch {
+    $('unlockErr').textContent = 'Wrong passphrase';
+    // Shake the modal sheet and lock icon to indicate wrong passphrase
+    const sheet = $('unlockSheet');
+    if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
+    const chip = $('ic-lock');
+    if (chip) { chip.classList.remove('shake'); void chip.offsetWidth; chip.classList.add('shake'); }
+  }
 }
 
 async function doEncrypt() {
@@ -759,14 +766,26 @@ async function doEncrypt() {
   if (pass !== confirm) { $('encryptErr').textContent = 'Passphrases do not match'; return; }
   try {
     await window.ioc.rpc('encryptwallet', [pass]);
-    // encryptwallet shuts down the daemon — close modal and show splash
-    $('encryptModal').classList.add('hidden');
-    $('encryptPass').value = '';
-    $('encryptPassConfirm').value = '';
-    updateSplashStatus('Wallet encrypted. Daemon is restarting…');
-    showSplash();
+  } catch (_) {
+    // encryptwallet may error because daemon shuts down mid-RPC — that's expected
+  }
+  // Close modal, show splash, restart daemon
+  $('encryptModal').classList.add('hidden');
+  $('encryptPass').value = '';
+  $('encryptPassConfirm').value = '';
+  updateSplashStatus('Wallet encrypted. Daemon is restarting…');
+  showSplash();
+  try {
+    const result = await window.ioc.restartDaemon();
+    if (result?.ok) {
+      updateSplashStatus('Daemon restarted. Loading…');
+      // Reset state so polling picks up the new encrypted status
+      state.encrypted = null;
+      connectionState.connected = false;
+      connectionState.attempts = 0;
+    }
   } catch (e) {
-    $('encryptErr').textContent = e?.message || 'Encryption failed';
+    updateSplashStatus('Restart failed: ' + (e?.message || 'unknown error'));
   }
 }
 

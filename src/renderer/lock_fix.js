@@ -11,7 +11,7 @@
 
     if (encrypted === false) {
       chip.classList.remove('ok');
-      chip.title = 'Wallet is not encrypted (click to encrypt)';
+      chip.title = 'Wallet is unencrypted (click to encrypt it)';
     } else {
       chip.classList.toggle('ok', !!unlocked);
       chip.title = unlocked ? 'Wallet unlocked' : 'Wallet locked';

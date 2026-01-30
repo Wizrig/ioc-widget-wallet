@@ -429,6 +429,24 @@ ipcMain.handle('ioc:hideWindow', async (event) => {
   app.exit(0);
   return { ok: true };
 });
+
+ipcMain.handle('ioc:restartDaemon', async () => {
+  // Wait for daemon to fully stop (encryptwallet shuts it down)
+  console.log('[daemon] Waiting for daemon to stop after encryption...');
+  const stopped = await waitForDaemonStop(15000, 500);
+  if (!stopped) {
+    console.warn('[daemon] Daemon did not stop within timeout, attempting start anyway');
+  }
+  // Invalidate wallet cache so fresh lockst is fetched
+  if (global.__iocWalletCache) global.__iocWalletCache.ts = 0;
+  if (statusCache) statusCache.ts = 0;
+  // Start daemon fresh
+  console.log('[daemon] Restarting daemon...');
+  const ok = startDetached(DAEMON_PATH);
+  daemonState.startedByUs = true;
+  daemonState.running = ok;
+  return { ok };
+});
 // ===== End Exit Confirmation =====
 
 /** ---- Remote tip cache (network block height from explorer) ---- */

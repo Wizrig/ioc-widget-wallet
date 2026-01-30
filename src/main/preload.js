@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('ioc', {
   // Window control
   quitApp: (stopDaemon = true) => ipcRenderer.invoke('ioc:quitApp', stopDaemon),
   hideWindow: () => ipcRenderer.invoke('ioc:hideWindow'),
+  restartDaemon: () => ipcRenderer.invoke('ioc:restartDaemon'),
   // Compact widget mode
   setCompactMode: (isCompact) => ipcRenderer.invoke('ioc:setCompactMode', isCompact),
   onCompactModeChanged: (cb) => {

@@ -219,43 +219,7 @@ async function runBootstrapFlow() {
 
     if (!needed) {
       console.log('[bootstrap] Not needed, chain data exists');
-      // No bootstrap needed — but daemon might not be running yet.
-      // Wait for RPC to respond. NO hard timeout — keep polling as long as
-      // process is alive. Only show error if process dies.
-      splashState.phase = 'connecting';
-      updateSplashStatus('Connecting to daemon…');
-      const waitStart = Date.now();
-      while (true) {
-        try {
-          const status = await window.ioc.daemonStatus();
-          if (status.running) {
-            console.log('[bootstrap] Daemon is running (RPC responsive)');
-            hideWarmupActions();
-            return false;
-          }
-        } catch (_) {}
-
-        // Check if process is alive (PID-validated, not RPC)
-        try {
-          const proc = await window.ioc.isDaemonProcessAlive();
-          if (!proc.alive) {
-            // Process is dead — this IS a fatal error
-            console.error('[bootstrap] Daemon process not alive');
-            updateSplashStatus('Daemon is not running');
-            return false;
-          }
-        } catch (_) {}
-
-        const elapsed = Math.floor((Date.now() - waitStart) / 1000);
-        const msg = elapsed < 10 ? `Connecting to daemon… (${elapsed}s)` :
-                    `Loading block index… (${elapsed}s)`;
-        updateSplashStatus(msg);
-
-        // Show warmup action buttons after 15s
-        if (elapsed >= 15) showWarmupActions();
-
-        await new Promise(r => setTimeout(r, 1000));
-      }
+      return false;
     }
 
     console.log('[bootstrap] No chain data found, starting bootstrap flow');
@@ -319,58 +283,6 @@ async function runBootstrapFlow() {
   }
 }
 
-// ===== Warmup Action Helpers =====
-function showWarmupActions() {
-  const el = $('warmupActions');
-  if (el) el.classList.remove('hidden');
-}
-
-function hideWarmupActions() {
-  const el = $('warmupActions');
-  if (el) el.classList.add('hidden');
-}
-
-function setupWarmupHandlers() {
-  const retryBtn = $('warmupRetryRpc');
-  const stopBtn = $('warmupStopQuit');
-  const logsBtn = $('warmupOpenLogs');
-
-  if (retryBtn) {
-    retryBtn.addEventListener('click', async () => {
-      updateSplashStatus('Retrying RPC…');
-      try {
-        const status = await window.ioc.daemonStatus();
-        if (status && status.running) {
-          console.log('[warmup] RPC retry succeeded');
-          hideWarmupActions();
-          hideSplash();
-          connectionState.connected = true;
-          refresh();
-        } else {
-          updateSplashStatus('Daemon not responding yet… still waiting');
-        }
-      } catch (_) {
-        updateSplashStatus('Daemon not responding yet… still waiting');
-      }
-    });
-  }
-
-  if (stopBtn) {
-    stopBtn.addEventListener('click', () => {
-      updateSplashStatus('Stopping daemon…');
-      window.ioc.quitApp(true);
-    });
-  }
-
-  if (logsBtn) {
-    logsBtn.addEventListener('click', () => {
-      if (window.sys && window.sys.openFolder) {
-        window.sys.openFolder();
-      }
-    });
-  }
-}
-// ===== End Warmup Action Helpers =====
 
 function setupBootstrapHandlers() {
   const skipBtn = $('bootstrapSkip');
@@ -650,7 +562,6 @@ async function refresh() {
           console.log(`[splash] Within ${SPLASH_BLOCKS_THRESHOLD} blocks of tip (${blocksRemaining} remaining), hiding splash`);
           splashState.validStatusReceived = true;
           hideSplash();
-          hideWarmupActions();
           hideConnectBanner();
           connectionState.connected = true;
           connectionState.attempts = 0;
@@ -680,7 +591,6 @@ async function refresh() {
       // Splash already hidden - normal connection handling
       if (!connectionState.connected) {
         hideConnectBanner();
-        hideWarmupActions();
         connectionState.connected = true;
         connectionState.attempts = 0;
         connectionState.lastError = null;
@@ -728,35 +638,12 @@ async function refresh() {
       console.error(`[refresh] Failed after ${elapsed}ms:`, connectionState.lastError);
     }
 
-    // Handle connection failure — check if process is alive before deciding severity
-    connectionState.attempts++;
-
-    // Check process alive to distinguish warmup from dead daemon
-    let processAlive = false;
-    try {
-      const proc = await window.ioc.isDaemonProcessAlive();
-      processAlive = proc && proc.alive;
-    } catch (_) {}
-
-    if (processAlive) {
-      // Process alive but RPC not responding — runtime WARMUP (non-fatal)
-      // Use splash overlay (NOT bootstrap modal — that's setup-only)
-      if (!splashState.visible) {
-        // CONNECTED→WARMUP transition: re-show splash with warmup text
-        splashState.phase = 'connecting';
-        showSplash('Loading block index…');
-      }
-      const elapsed = Math.floor((Date.now() - (connectionState.startTime || Date.now())) / 1000);
-      updateSplashStatus(`Loading block index… (${elapsed}s)`);
-      if (elapsed >= 15) showWarmupActions();
-      // Reset connection state — not a real disconnect
-      connectionState.connected = false;
-    } else {
-      // Process NOT alive — real error
+    // Handle connection failure with retry/backoff (RC3-style)
+    if (!connectionState.connected) {
+      connectionState.attempts++;
       if (splashState.visible) {
         if (connectionState.attempts >= connectionState.maxAttempts) {
           hideSplash();
-          hideWarmupActions();
           showConnectBanner(
             'Daemon not responding',
             true,
@@ -940,9 +827,6 @@ function main() {
 
   // Setup bootstrap handlers (skip/retry buttons)
   setupBootstrapHandlers();
-
-  // Setup warmup action handlers (Retry RPC / Stop & Quit / Open Logs)
-  setupWarmupHandlers();
 
   // Check for first-run bootstrap before starting normal refresh loop
   (async () => {

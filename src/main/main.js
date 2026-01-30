@@ -68,10 +68,8 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
-const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning, isDaemonProcessAlive,
-        startDetached, ensureDaemon, verifyDaemonBinary, DAEMON_PATH, getSpawnError,
-        getEarlyExit, getSpawnedPid, readSavedPid, cleanupPidFile,
-        validatePidIsIocoind, findDaemonPidByPgrep } = require('./daemon');
+const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning,
+        startDetached, ensureDaemon, DAEMON_PATH } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -87,9 +85,7 @@ let daemonState = { running: false, pid: null, error: null, binaryPath: null, st
 ipcMain.handle('ioc:daemonStatus', async () => {
   const status = await isDaemonRunning();
   daemonState.running = status.running;
-  if (status.running) {
-    daemonState.error = null;
-  }
+  daemonState.error = status.error || null;
   return {
     running: daemonState.running,
     pid: daemonState.pid,
@@ -97,24 +93,13 @@ ipcMain.handle('ioc:daemonStatus', async () => {
     binaryPath: daemonState.binaryPath,
     startedByUs: daemonState.startedByUs,
     needsBootstrap: daemonState.needsBootstrap || false,
-    blockCount: status.blockCount || 0,
-    spawnError: getSpawnError(),
-    earlyExit: getEarlyExit()
+    blockCount: status.blockCount || 0
   };
-});
-
-// ===== isDaemonProcessAlive IPC — used by renderer for warmup polling =====
-ipcMain.handle('ioc:isDaemonProcessAlive', async () => {
-  const result = await isDaemonProcessAlive();
-  return result; // { alive, pid, source }
 });
 
 /**
  * Auto-start daemon on app launch if not already running.
- * Decision rule (PID-first, then RPC):
- *   1. Validated PID file → processAlive=true, attach (we have shutdown control)
- *   2. RPC responds → processAlive=true, attach (limited shutdown: CLI stop only)
- *   3. Neither → not running, proceed to bootstrap/start
+ * RC3-stable pattern: RPC check → if not running, ensure binary → start.
  */
 async function initDaemon() {
   ensureConf();
@@ -133,39 +118,32 @@ async function initDaemon() {
 
   daemonState.binaryPath = DAEMON_PATH;
 
-  // Step 2: Check if daemon is already running — PID first, then RPC
-  const processCheck = await isDaemonProcessAlive();
-
-  if (processCheck.alive) {
-    console.log('[daemon] Daemon already running (source:', processCheck.source,
-                 ', PID:', processCheck.pid, ') — attaching');
-    daemonState.running = processCheck.source !== 'rpc'; // RPC means warming up or already running
-    daemonState.startedByUs = processCheck.source === 'spawned';
-    daemonState.pid = processCheck.pid;
-    daemonState.hasPidControl = processCheck.pid != null; // Can we force-kill?
-    return { ok: true, attached: true, pid: processCheck.pid, hasPidControl: processCheck.pid != null };
+  // Step 2: Check if daemon is already running via RPC
+  const status = await isDaemonRunning();
+  if (status.running) {
+    console.log('[daemon] Already running, attaching...');
+    daemonState.running = true;
+    daemonState.startedByUs = false;
+    return { ok: true, attached: true };
   }
 
-  // Step 3: Not running — check if bootstrap is needed BEFORE starting daemon
+  // Step 3: Check if bootstrap is needed BEFORE starting daemon
   if (bootstrap.needsBootstrap()) {
     console.log('[daemon] Bootstrap needed — deferring daemon start to renderer flow');
     daemonState.needsBootstrap = true;
     return { ok: true, deferred: true, needsBootstrap: true };
   }
 
-  // Step 4: No bootstrap needed — start daemon directly
+  // Step 4: Start daemon
   console.log('[daemon] Starting daemon from:', DAEMON_PATH);
   const started = startDetached(DAEMON_PATH);
   if (started) {
     daemonState.startedByUs = true;
-    daemonState.pid = getSpawnedPid();
-    daemonState.hasPidControl = true;
-    console.log('[daemon] Daemon started, PID:', daemonState.pid);
+    console.log('[daemon] Daemon started successfully');
     return { ok: true, started: true, path: DAEMON_PATH };
   } else {
-    const spawnErr = getSpawnError();
-    daemonState.error = spawnErr || 'Failed to start daemon';
-    return { ok: false, error: daemonState.error };
+    daemonState.error = 'Failed to start daemon';
+    return { ok: false, error: 'Failed to start daemon' };
   }
 }
 // ===== End daemon IPC =====
@@ -215,7 +193,7 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
   };
 
   try {
-    // 1. Extract bootstrap to temp folder
+    // 1. Extract the bootstrap
     console.log('[bootstrap] Extracting bootstrap zip...');
     sendProgress('extracting', 'Extracting blockchain files...');
     const extractResult = await bootstrap.extractBootstrap();
@@ -223,9 +201,7 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
       return extractResult;
     }
 
-    // 2. Apply bootstrap files — daemon has NOT been started yet.
-    // applyBootstrapFiles() only copies blk*.dat and txleveldb/
-    // and NEVER touches wallet.dat.
+    // 2. Apply bootstrap files
     console.log('[bootstrap] Installing bootstrap files to DATA_DIR...');
     sendProgress('applying', 'Installing blockchain files...');
     const applyResult = await bootstrap.applyBootstrapFiles();
@@ -238,61 +214,15 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
     sendProgress('cleanup', 'Cleaning up...');
     bootstrap.cleanupBootstrap();
 
-    // 4. Start daemon from installed binary (already verified)
+    // 4. Start daemon
     console.log('[bootstrap] Starting daemon with bootstrap data...');
     sendProgress('starting', 'Starting daemon...');
-    const started = startDetached(DAEMON_PATH);
-    if (!started) {
-      const spawnErr = getSpawnError();
-      return { ok: false, error: spawnErr || 'Failed to start daemon' };
-    }
+    startDetached(DAEMON_PATH);
     daemonState.startedByUs = true;
     daemonState.binaryPath = DAEMON_PATH;
     daemonState.needsBootstrap = false;
-    daemonState.pid = getSpawnedPid();
-    daemonState.hasPidControl = true;
 
-    // 5. Poll until RPC responds OR process dies (no hard timeout).
-    // After bootstrap with large chain data, block index loading can take minutes.
-    // NEVER fatal-error while processAlive=true.
-    console.log('[bootstrap] Waiting for daemon to respond (no hard timeout)...');
-    const startTime = Date.now();
-    while (true) {
-      await new Promise(r => setTimeout(r, 1000));
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-
-      const msg = elapsed < 10 ? `Starting daemon... (${elapsed}s)` :
-                  `Loading block index... (${elapsed}s)`;
-      sendProgress('starting', msg);
-
-      // Check if process is still alive
-      const processCheck = await isDaemonProcessAlive();
-      if (!processCheck.alive) {
-        const earlyExit = getEarlyExit();
-        const spawnErr = getSpawnError();
-        const lockError = earlyExit && earlyExit.lockError;
-        if (lockError) {
-          // Another daemon grabbed the lock — attach to it instead
-          console.log('[bootstrap] Lock error — another daemon owns our datadir, attaching');
-          daemonState.startedByUs = false;
-          daemonState.hasPidControl = false;
-          daemonState.pid = null;
-          // Fall through — renderer will poll until RPC responds
-          return { ok: true, started: true, attached: true };
-        }
-        const errMsg = spawnErr || `Daemon exited (code ${earlyExit?.code || 'unknown'})`;
-        console.error('[bootstrap] Daemon died:', errMsg);
-        return { ok: false, error: errMsg };
-      }
-
-      // Check if RPC is responding
-      const rpcStatus = await isDaemonRunning();
-      if (rpcStatus.running) {
-        console.log('[bootstrap] Daemon is running, block count:', rpcStatus.blockCount);
-        daemonState.running = true;
-        return { ok: true, started: true };
-      }
-    }
+    return { ok: true, restarted: true };
   } catch (err) {
     console.error('[bootstrap] Apply error:', err);
     return { ok: false, error: err.message || String(err) };
@@ -306,6 +236,7 @@ ipcMain.handle('ioc:bootstrapCleanup', async () => {
 
 // ===== Exit Confirmation Dialog (Step D) =====
 const { dialog, nativeImage } = require('electron');
+const { execSync } = require('child_process');
 
 // Track if we should skip the confirmation (user already chose)
 let exitConfirmed = false;
@@ -331,90 +262,54 @@ async function showExitConfirmation(win) {
 }
 
 /**
- * Poll until daemon process is truly dead (not just RPC unresponsive).
- * Checks both RPC and process existence via PID + pgrep.
- * @param {number} timeoutMs - Max time to wait
- * @param {number} intervalMs - Poll interval
- * @param {number|null} knownPid - PID to check directly (optional)
- * @returns {Promise<boolean>} - true if stopped, false if still running
+ * Poll isDaemonRunning until it returns false or timeout.
  */
-async function waitForDaemonStop(timeoutMs, intervalMs = 500, knownPid = null) {
+async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    // Check 1: if we have a known PID, check if process is alive
-    if (knownPid) {
-      try {
-        process.kill(knownPid, 0);
-        // Still alive — wait
-        await new Promise(r => setTimeout(r, intervalMs));
-        continue;
-      } catch (_) {
-        // Process gone
-        console.log('[exit] Daemon PID', knownPid, 'confirmed dead');
-        return true;
-      }
+    const status = await isDaemonRunning();
+    if (!status.running) {
+      console.log('[exit] Daemon confirmed stopped');
+      return true;
     }
-
-    // Check 2: pgrep fallback — is any iocoind running for our datadir?
-    const pgrepPid = findDaemonPidByPgrep();
-    if (!pgrepPid) {
-      // Check 3: RPC also not responding
-      const { isDaemonRunning } = require('./daemon');
-      const status = await isDaemonRunning();
-      if (!status.running) {
-        console.log('[exit] Daemon confirmed stopped (no PID, no RPC)');
-        return true;
-      }
-    }
-
     await new Promise(r => setTimeout(r, intervalMs));
   }
   return false;
 }
 
 /**
- * Find daemon PID — datadir-scoped, fully validated.
- * Sources checked in order:
- *   1. In-memory spawned PID (validated: alive + is iocoind)
- *   2. Persisted PID file (validated: datadir match + alive + is iocoind)
- * Does NOT use pgrep/tasklist — those can't be datadir-scoped.
- * @returns {number|null}
+ * Find daemon PID from pidfile or pgrep.
  */
 function findDaemonPid() {
-  // Source 1: in-memory spawned PID
-  const spawnedPid = getSpawnedPid();
-  if (spawnedPid) {
+  // Check iocoind.pid (daemon's own pidfile)
+  const pidFile = path.join(DATA_DIR, 'iocoind.pid');
+  if (fs.existsSync(pidFile)) {
     try {
-      process.kill(spawnedPid, 0);
-      if (validatePidIsIocoind(spawnedPid)) {
-        console.log('[exit] Found spawned daemon PID:', spawnedPid);
-        return spawnedPid;
+      const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (pid > 0) {
+        console.log('[exit] Found daemon PID from pidfile:', pid);
+        return pid;
       }
     } catch (_) {}
   }
 
-  // Source 2: persisted PID file (readSavedPid validates datadir + process name)
-  const saved = readSavedPid();
-  if (saved) {
-    console.log('[exit] Found validated PID from file:', saved.pid);
-    return saved.pid;
+  // Fallback: use pgrep on unix
+  if (process.platform !== 'win32') {
+    try {
+      const output = execSync('pgrep -x iocoind', { encoding: 'utf8', timeout: 3000 });
+      const pid = parseInt(output.trim().split('\n')[0], 10);
+      if (pid > 0) {
+        console.log('[exit] Found daemon PID from pgrep:', pid);
+        return pid;
+      }
+    } catch (_) {}
   }
 
-  // Source 3: pgrep fallback — find iocoind with our datadir in command line
-  const pgrepPid = findDaemonPidByPgrep();
-  if (pgrepPid) {
-    console.log('[exit] Found validated PID from pgrep:', pgrepPid);
-    return pgrepPid;
-  }
-
-  console.log('[exit] No validated PID found');
   return null;
 }
 
 /**
  * Force kill daemon by PID.
- * @param {number} pid
- * @param {string} signal - 'SIGTERM' or 'SIGKILL'
  */
 function killDaemonByPid(pid, signal) {
   try {
@@ -428,16 +323,30 @@ function killDaemonByPid(pid, signal) {
 }
 
 /**
+ * Force kill daemon by process name (last resort).
+ */
+function killDaemonByName(signal) {
+  if (process.platform === 'win32') return false;
+  const sigFlag = signal === 'SIGKILL' ? '-KILL' : '-TERM';
+  try {
+    console.log(`[exit] Running pkill ${sigFlag} iocoind`);
+    execSync(`pkill ${sigFlag} iocoind`, { timeout: 5000 });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Hard guarantee stop daemon and quit.
- * Uses validated PID for force-kill. If PID unknown (external daemon),
- * only attempts CLI stop — never pkill globally.
+ * RC3-stable: CLI stop → SIGTERM by PID → SIGKILL by PID → pkill last resort.
  */
 async function stopDaemonAndQuitHard() {
-  const { stopViaCli, findCliBinary, isDaemonRunning } = require('./daemon');
+  const { stopViaCli, findCliBinary } = require('./daemon');
 
   console.log('[exit] Starting hard shutdown sequence...');
 
-  // Step 1: Attempt graceful stop via CLI (always safe — targets our datadir)
+  // Step A: Attempt graceful stop via CLI
   const cli = findCliBinary();
   if (cli.found) {
     console.log('[exit] Sending stop command via CLI...');
@@ -447,65 +356,49 @@ async function stopDaemonAndQuitHard() {
       console.error('[exit] CLI stop failed:', err.message);
     }
 
-    // Poll for up to 20 seconds
     const stopped = await waitForDaemonStop(20000, 500);
     if (stopped) {
-      console.log('[exit] Daemon stopped gracefully via CLI');
-      cleanupPidFile();
+      console.log('[exit] Daemon stopped gracefully');
       app.exit(0);
       return;
     }
   }
 
-  // Step 2: Try force-kill by validated PID
-  const pid = findDaemonPid();
+  // Step B: Try SIGTERM by PID
+  let pid = findDaemonPid();
   if (pid) {
-    // We have a validated PID (confirmed iocoind for our datadir) — safe to kill
-    console.log('[exit] CLI stop failed/timed out, sending SIGTERM to PID:', pid);
     killDaemonByPid(pid, 'SIGTERM');
-    let stopped = await waitForDaemonStop(10000, 500, pid);
+    const stopped = await waitForDaemonStop(10000, 500);
     if (stopped) {
       console.log('[exit] Daemon stopped after SIGTERM');
-      cleanupPidFile();
       app.exit(0);
       return;
     }
 
-    // Escalate to SIGKILL
-    console.log('[exit] SIGTERM timed out, sending SIGKILL to PID:', pid);
+    // Try SIGKILL
     killDaemonByPid(pid, 'SIGKILL');
-    stopped = await waitForDaemonStop(5000, 500, pid);
-    if (stopped) {
+    const stoppedKill = await waitForDaemonStop(5000, 500);
+    if (stoppedKill) {
       console.log('[exit] Daemon stopped after SIGKILL');
-      cleanupPidFile();
       app.exit(0);
       return;
-    }
-  } else {
-    // No validated PID — daemon was not started by us or PID file is gone.
-    // We already tried CLI stop above. Cannot safely force-kill.
-    const rpcCheck = await isDaemonRunning();
-    if (rpcCheck.running) {
-      console.log('[exit] Daemon still running but PID unknown — cannot force-kill safely');
-      // Try CLI stop one more time
-      if (cli.found) {
-        try { await stopViaCli(cli.path); } catch (_) {}
-        const stopped = await waitForDaemonStop(10000, 500);
-        if (stopped) {
-          console.log('[exit] Daemon stopped on retry CLI stop');
-          cleanupPidFile();
-          app.exit(0);
-          return;
-        }
-      }
-      // Still running — quit UI only, warn in console
-      console.warn('[exit] Daemon running but PID unknown; quitting UI only');
     }
   }
 
-  // Step 3: Quit regardless
+  // Step C: Last resort - pkill by name
+  const status = await isDaemonRunning();
+  if (status.running) {
+    console.log('[exit] Daemon still running, using pkill...');
+    killDaemonByName('SIGTERM');
+    let stopped = await waitForDaemonStop(5000, 500);
+    if (!stopped) {
+      killDaemonByName('SIGKILL');
+      stopped = await waitForDaemonStop(3000, 500);
+    }
+  }
+
+  // Step D: Quit regardless
   console.log('[exit] Exiting Electron...');
-  cleanupPidFile();
   app.exit(0);
 }
 

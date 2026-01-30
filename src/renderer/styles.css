@@ -389,29 +389,6 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
   50% { transform: translateX(233%); }
   100% { transform: translateX(-100%); }
 }
-/* Warmup action buttons (shown after 15s in warmup/block-index state) */
-.warmup-actions {
-  margin-top: 14px;
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-  -webkit-app-region: no-drag;
-}
-.warmup-actions.hidden { display: none; }
-.warmup-actions .btn-sm {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  background: var(--card);
-  color: var(--muted);
-  cursor: pointer;
-}
-.warmup-actions .btn-sm:hover { color: var(--fg); border-color: var(--accent); }
-.warmup-actions .btn-danger { color: #e55; border-color: #e55; }
-.warmup-actions .btn-danger:hover { background: #e55; color: #fff; }
-.warmup-actions .btn-link { border: none; background: transparent; text-decoration: underline; }
 /* ===== End Splash Overlay ===== */
 
 /* ===== Global Dark Blue Scrollbars ===== */

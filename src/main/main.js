@@ -71,8 +71,8 @@ ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
 
 ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
   try {
-    const { rpc: httpRpc } = require('./rpc');
-    return { ok: true, result: await httpRpc(method, params) };
+    const { rpcDirect } = require('./rpc');
+    return { ok: true, result: await rpcDirect(method, params) };
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
@@ -507,38 +507,36 @@ const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {
   const now = Date.now();
 
-  // ---- SLOW wallet cache (15s) ----
-  if (!global.__iocWalletCache) global.__iocWalletCache = { ts: 0, data: { info: {}, staking: {}, lockst: {} } };
+  // ---- SLOW wallet cache (15s) — never blocks the fast path ----
+  if (!global.__iocWalletCache) global.__iocWalletCache = { ts: 0, data: { info: {}, staking: {}, lockst: {} }, refreshing: false };
   const wc = global.__iocWalletCache;
   const walletFresh = wc.data && (now - wc.ts) < 15000;
 
-  const walletPromise = walletFresh ? Promise.resolve(wc.data) : (async () => {
-    const [info, stake, lockst] = await Promise.all([
-      safeRpc('getinfo', [], {}) || {},
-      safeRpc('getstakinginfo', [], {}) || {},
-      (async () => (await safeRpc('walletlockstatus', [], null)) || {})()
-    ]);
-    const data = { info, staking: stake, lockst };
-    wc.data = data;
-    wc.ts = Date.now();
-    return data;
-  })();
+  // Kick off background wallet refresh if stale (don't await it)
+  if (!walletFresh && !wc.refreshing) {
+    wc.refreshing = true;
+    (async () => {
+      try {
+        const info = (await safeRpc('getinfo', [], {})) || {};
+        const stake = (await safeRpc('getstakinginfo', [], {})) || {};
+        const lockst = (await safeRpc('walletlockstatus', [], null)) || {};
+        wc.data = { info, staking: stake, lockst };
+        wc.ts = Date.now();
+      } catch {}
+      wc.refreshing = false;
+    })();
+  }
 
-  // ---- FAST chain+peers (every status call) ----
-  const chainPromise = (async () => {
-    const bi = await safeRpc('getblockchaininfo', [], null);
-    if (bi) return bi;
-    const blocks = await safeRpc('getblockcount', [], 0);
-    return { blocks, headers: blocks, verificationprogress: blocks ? 1 : 0 };
-  })();
+  // ---- FAST chain+peers (only 2 RPCs, serialized via queue) ----
+  const chain = await safeRpc('getblockchaininfo', [], null)
+    || { blocks: await safeRpc('getblockcount', [], 0), headers: 0, verificationprogress: 0 };
 
-  const peersPromise = safeRpc('getconnectioncount', [], 0);
+  const peers = await safeRpc('getconnectioncount', [], 0);
 
-  // Fetch remote tip in parallel (non-blocking)
-  const remoteTipPromise = fetchRemoteTip().catch(() => 0);
+  // Fetch remote tip (HTTP to explorer, not daemon RPC)
+  const remoteTip = await fetchRemoteTip().catch(() => 0);
 
-  const [wallet, chain, peers, remoteTip] = await Promise.all([walletPromise, chainPromise, peersPromise, remoteTipPromise]);
-  return { info: wallet.info, chain, peers, staking: wallet.staking, lockst: wallet.lockst, remoteTip };
+  return { info: wc.data.info, chain, peers, staking: wc.data.staking, lockst: wc.data.lockst, remoteTip };
 }
 ipcMain.handle('ioc/status', async () => {
   const now = Date.now();

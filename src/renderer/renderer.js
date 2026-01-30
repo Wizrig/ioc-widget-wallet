@@ -12,6 +12,7 @@ let splashState = {
   startTime: Date.now(),
   initialBlocks: null,  // Track initial blocks to detect movement
   longWaitShown: false,
+  blockchainIndexShown: false,
   syncStartTime: null,  // When sync phase started (for ETA calculation)
   syncStartBlocks: null, // Blocks when sync phase started
   phase: 'connecting'   // 'connecting' | 'downloading' | 'installing' | 'syncing'
@@ -41,14 +42,17 @@ function updateSplashStatus(text) {
   if (status && text) status.textContent = text;
 }
 
-// Check if splash should show "this may take a few minutes" message
+// Check if splash should show progressive loading messages
 function checkSplashLongWait() {
-  if (!splashState.visible || splashState.longWaitShown) return;
+  if (!splashState.visible) return;
   if (splashState.phase !== 'connecting') return; // Only for connecting phase
   const elapsed = Date.now() - splashState.startTime;
-  if (elapsed > 8000) { // 8 seconds threshold
+  if (!splashState.blockchainIndexShown && elapsed > 60000) {
+    splashState.blockchainIndexShown = true;
+    updateSplashStatus('Loading blockchain index\u2026');
+  } else if (!splashState.longWaitShown && elapsed > 8000) {
     splashState.longWaitShown = true;
-    updateSplashStatus('Loading daemon… this may take a few minutes');
+    updateSplashStatus('Loading daemon\u2026 this may take a few minutes');
   }
 }
 

@@ -80,6 +80,7 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 .btn{background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);color:var(--ink);padding:8px 14px;border-radius:10px;cursor:pointer;transition:background .15s ease}
 .btn:hover{background:var(--card-hover)}
 .btn-ok{background:var(--accent);color:#fff}
+.btn-danger{background:var(--danger);color:#fff}
 .btn.sm{padding:6px 10px;border-radius:8px;font-size:13px}
 .err{color:var(--danger);min-height:18px;margin-top:6px}
 .newaddr-result{margin-top:8px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;background:var(--bg);border:1px dashed var(--border);padding:8px;border-radius:8px}

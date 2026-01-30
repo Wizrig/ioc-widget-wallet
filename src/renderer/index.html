@@ -12,7 +12,7 @@
   <div id="splashOverlay" class="splash-overlay">
     <div class="splash-content">
       <img src="../../assets/icon.png" alt="IOCoin" class="splash-logo" onerror="this.style.display='none'">
-      <div id="splashStatus" class="splash-status">Connecting to daemon…<br>This may take a few minutes</div>
+      <div id="splashStatus" class="splash-status">Loading daemon…<br>This may take a few minutes</div>
       <div class="splash-progress">
         <div class="splash-bar"></div>
       </div>
@@ -58,7 +58,7 @@
     <!-- Connection banner (shown while connecting to daemon) -->
     <div id="connectBanner" class="connect-banner hidden">
       <div class="connect-inner">
-        <div id="connectText">Connecting to daemon...</div>
+        <div id="connectText">Loading daemon...</div>
         <div id="connectError" class="connect-error hidden"></div>
         <a id="connectHelp" class="connect-help hidden" href="https://i-o-digital-foundation.gitbook.io/ioc/wallet-installation-guide" target="_blank">Open Installation Guide</a>
       </div>
@@ -137,6 +137,19 @@
       <div class="row">
         <button id="cancelUnlock" class="btn">Cancel</button>
         <button id="doUnlock" class="btn btn-ok">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="encryptModal" class="modal hidden">
+    <div class="sheet" id="encryptSheet">
+      <div class="title2">Choose a passphrase, on success you must restart your wallet following the automatic shutdown</div>
+      <input id="encryptPass" type="password" placeholder="Your Passphrase">
+      <input id="encryptPassConfirm" type="password" placeholder="Confirm passphrase">
+      <div class="err" id="encryptErr"></div>
+      <div class="row">
+        <button id="cancelEncrypt" class="btn btn-danger">Cancel</button>
+        <button id="doEncrypt" class="btn btn-ok">Confirm</button>
       </div>
     </div>
   </div>

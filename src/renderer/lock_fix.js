@@ -4,13 +4,18 @@
   const LOCK_SVG_ID  = 'svg-lock';
   let last = null, primed = false;
 
-  function setLockVisual(unlocked){
+  function setLockVisual(unlocked, encrypted){
     const chip = $(LOCK_CHIP_ID);
     const svg  = $(LOCK_SVG_ID);
     if (!chip || !svg) return;
 
-    chip.classList.toggle('ok', !!unlocked);
-    chip.title = unlocked ? 'Wallet unlocked' : 'Wallet locked';
+    if (encrypted === false) {
+      chip.classList.remove('ok');
+      chip.title = 'Wallet is not encrypted (click to encrypt)';
+    } else {
+      chip.classList.toggle('ok', !!unlocked);
+      chip.title = unlocked ? 'Wallet unlocked' : 'Wallet locked';
+    }
 
     const openSVG =
       '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">'+
@@ -21,24 +26,25 @@
     svg.innerHTML = unlocked ? openSVG : closedSVG;
   }
 
-  function computeUnlocked(st){
+  function computeState(st){
     if (st && st.lockst && typeof st.lockst.isLocked === 'boolean') {
-      if (st.lockst.isEncrypted === false) return true;
-      if (st.lockst.isEncrypted === true)  return !st.lockst.isLocked;
+      const encrypted = st.lockst.isEncrypted !== false;
+      const unlocked = encrypted ? !st.lockst.isLocked : false;
+      return { unlocked, encrypted };
     }
     if (st && st.staking && typeof st.staking.enabled === 'boolean') {
-      return !!st.staking.enabled; // fallback only
+      return { unlocked: !!st.staking.enabled, encrypted: true };
     }
     return null;
   }
 
   function onStatus(e){
     const st = e.detail || {};
-    const unlocked = computeUnlocked(st);
-    if (unlocked === null) return;
-    if (unlocked !== last){
-      last = unlocked;
-      setLockVisual(unlocked);
+    const s = computeState(st);
+    if (s === null) return;
+    if (s.unlocked !== last){
+      last = s.unlocked;
+      setLockVisual(s.unlocked, s.encrypted);
     }
   }
 
@@ -47,8 +53,8 @@
       if (primed) return;
       const fn = (window.ioc && window.ioc.status) || (window.iocBridge && window.iocBridge.status);
       const st = fn ? await fn() : null;
-      const u = computeUnlocked(st);
-      if (u !== null){ last = u; setLockVisual(u); primed = true; }
+      const s = computeState(st);
+      if (s !== null){ last = s.unlocked; setLockVisual(s.unlocked, s.encrypted); primed = true; }
     }catch{}
   }
 

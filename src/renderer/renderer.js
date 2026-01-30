@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 
-let state = { unlocked: false, peers: 0, synced: false, blocks: 0 };
+let state = { unlocked: false, encrypted: null, peers: 0, synced: false, blocks: 0 };
 let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
@@ -48,7 +48,7 @@ function checkSplashLongWait() {
   const elapsed = Date.now() - splashState.startTime;
   if (elapsed > 8000) { // 8 seconds threshold
     splashState.longWaitShown = true;
-    updateSplashStatus('Connecting to daemon… this may take a few minutes');
+    updateSplashStatus('Loading daemon… this may take a few minutes');
   }
 }
 
@@ -132,7 +132,7 @@ function showConnectBanner(text, isError, errorDetail) {
 
   banner.classList.remove('hidden');
   banner.classList.toggle('error', !!isError);
-  if (textEl) textEl.textContent = text || 'Connecting to daemon...';
+  if (textEl) textEl.textContent = text || 'Loading daemon...';
 
   if (isError && errorDetail) {
     if (errorEl) {
@@ -405,16 +405,23 @@ function setPeers(n) {
   }
 }
 
-function setLock(unlocked) {
+function setLock(unlocked, encrypted) {
   state.unlocked = !!unlocked;
+  if (typeof encrypted === 'boolean') state.encrypted = encrypted;
   const p = $('p-lock'); if (!p) return;
-  if (state.unlocked) {
+  const chip = $('ic-lock');
+
+  if (state.encrypted === false) {
+    // Unencrypted wallet — grey lock, open padlock shape
     p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
+    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is not encrypted (click to encrypt)'; }
+  } else if (state.unlocked) {
+    p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
+    if (chip) { chip.classList.add('ok'); chip.title = 'Wallet unlocked'; }
   } else {
     p.setAttribute('d', 'M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm3 8H9V7a3 3 0 016 0v3z');
+    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet locked'; }
   }
-  const chip = $('ic-lock');
-  if (chip) { chip.classList.toggle('ok', state.unlocked); chip.title = state.unlocked ? 'Wallet unlocked' : 'Wallet locked'; }
 }
 
 function setStaking(on, amount, stakingInfo, balance) {
@@ -579,12 +586,12 @@ async function refresh() {
           connectionState.attempts = 0;
         } else {
           // Have headers but no blocks yet - still warming up
-          updateSplashStatus('Connecting to daemon…');
+          updateSplashStatus('Loading daemon…');
         }
       } else {
         // No chain data yet - still warming up
         if (!splashState.longWaitShown) {
-          updateSplashStatus('Connecting to daemon…');
+          updateSplashStatus('Loading daemon…');
         }
       }
     } else {
@@ -610,7 +617,8 @@ async function refresh() {
     setPeers(st?.peers || 0);
 
     const locked = st?.lockst?.isLocked;
-    if (typeof locked === 'boolean') setLock(!locked);
+    const isEncrypted = st?.lockst?.isEncrypted;
+    if (typeof locked === 'boolean') setLock(!locked, typeof isEncrypted === 'boolean' ? isEncrypted : undefined);
 
     // staking ON flag — only true when daemon reports actively staking (not just enabled)
     const stakingOn = !!(st?.staking?.staking);
@@ -660,7 +668,7 @@ async function refresh() {
             'Could not connect to iocoind. Ensure the daemon is installed and running.'
           );
         } else {
-          showConnectBanner(`Connecting to daemon… (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+          showConnectBanner(`Loading daemon… (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
         }
       }
     }
@@ -743,7 +751,35 @@ async function doUnlock() {
   } catch { $('unlockErr').textContent = 'Wrong passphrase'; }
 }
 
+async function doEncrypt() {
+  const pass = ($('encryptPass').value || '').trim();
+  const confirm = ($('encryptPassConfirm').value || '').trim();
+  $('encryptErr').textContent = '';
+  if (!pass) { $('encryptErr').textContent = 'Passphrase is required'; return; }
+  if (pass !== confirm) { $('encryptErr').textContent = 'Passphrases do not match'; return; }
+  try {
+    await window.ioc.rpc('encryptwallet', [pass]);
+    // encryptwallet shuts down the daemon — close modal and show splash
+    $('encryptModal').classList.add('hidden');
+    $('encryptPass').value = '';
+    $('encryptPassConfirm').value = '';
+    updateSplashStatus('Wallet encrypted. Daemon is restarting…');
+    showSplash();
+  } catch (e) {
+    $('encryptErr').textContent = e?.message || 'Encryption failed';
+  }
+}
+
 async function onLockClick() {
+  if (state.encrypted === false) {
+    // Wallet not encrypted — show encrypt modal
+    $('encryptPass').value = '';
+    $('encryptPassConfirm').value = '';
+    $('encryptErr').textContent = '';
+    $('encryptModal').classList.remove('hidden');
+    setTimeout(() => $('encryptPass').focus(), 0);
+    return;
+  }
   if (state.unlocked) {
     try {
       await window.ioc.rpc('reservebalance', [true, 999999999]);
@@ -793,6 +829,10 @@ function main() {
   $('cancelUnlock').addEventListener('click', () => { $('unlockModal').classList.add('hidden'); $('pass').value=''; });
   $('doUnlock').addEventListener('click', doUnlock);
   $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); if (e.key === 'Escape') {$('unlockModal').classList.add('hidden');} });
+
+  $('cancelEncrypt').addEventListener('click', () => { $('encryptModal').classList.add('hidden'); $('encryptPass').value=''; $('encryptPassConfirm').value=''; });
+  $('doEncrypt').addEventListener('click', doEncrypt);
+  $('encryptPassConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') doEncrypt(); if (e.key === 'Escape') {$('encryptModal').classList.add('hidden');} });
 
   $('sendBtn').addEventListener('click', () => $('sendModal').classList.remove('hidden'));
   // Widget send button (compact mode)

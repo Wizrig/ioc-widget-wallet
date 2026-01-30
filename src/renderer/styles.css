@@ -341,7 +341,8 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 .splash-overlay {
   position: fixed;
   inset: 0;
-  background: #050A12 url('../../assets/splash-bg.png') center/cover no-repeat;
+  background: #050A12;
+  background: var(--bg);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -357,10 +358,12 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 .splash-content {
   text-align: center;
   padding: 12px 16px;
-  margin-top: 120px;
 }
 .splash-logo {
-  display: none;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+  opacity: 0.95;
 }
 .splash-status {
   color: var(--muted);

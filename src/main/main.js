@@ -413,14 +413,9 @@ ipcMain.handle('ioc:quitApp', async (event, stopDaemon) => {
 });
 
 ipcMain.handle('ioc:hideWindow', async (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) {
-    if (process.platform === 'darwin') {
-      app.hide();
-    } else {
-      win.hide();
-    }
-  }
+  // Exit Electron process, keep daemon running
+  exitConfirmed = true;
+  app.exit(0);
   return { ok: true };
 });
 // ===== End Exit Confirmation =====
@@ -611,12 +606,9 @@ function createWindow() {
     }
 
     if (response === 1) {
-      // Close UI Only - hide window, keep daemon running
-      if (process.platform === 'darwin') {
-        app.hide();
-      } else {
-        win.hide();
-      }
+      // Close UI Only - exit Electron, keep daemon running
+      exitConfirmed = true;
+      app.exit(0);
       return;
     }
 

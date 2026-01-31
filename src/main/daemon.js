@@ -159,23 +159,37 @@ function installDaemonWin(src) {
   });
 }
 
-// Linux: pkexec or sudo for /usr/local/bin
+// Linux: copy to temp first (user can read AppImage FUSE mount), then pkexec
+// to move into /usr/local/bin (root cannot read FUSE mounts directly).
 function installDaemonLinux(src) {
-  const script = `mkdir -p /usr/local/bin && cp "${src}" "${DAEMON_PATH}" && chmod 755 "${DAEMON_PATH}"`;
+  const os = require('os');
+  const tmpBin = path.join(os.tmpdir(), `iocoind-install-${process.pid}`);
 
   return new Promise((resolve, reject) => {
-    // Try pkexec first (graphical sudo prompt)
+    // Step 1: copy from AppImage/resources to a temp file the user owns
+    try {
+      fs.copyFileSync(src, tmpBin);
+      fs.chmodSync(tmpBin, 0o755);
+    } catch (e) {
+      reject(new Error(`Failed to stage daemon binary: ${e.message}`));
+      return;
+    }
+
+    // Step 2: use pkexec to move the temp file into /usr/local/bin
+    const script = `mkdir -p /usr/local/bin && mv "${tmpBin}" "${DAEMON_PATH}" && chmod 755 "${DAEMON_PATH}"`;
     execFile('pkexec', ['sh', '-c', script], { timeout: 60000 }, (err) => {
       if (err) {
         // Fallback: try without elevation (might work if user owns /usr/local/bin)
         try {
           const targetDir = path.dirname(DAEMON_PATH);
           if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-          fs.copyFileSync(src, DAEMON_PATH);
+          fs.renameSync(tmpBin, DAEMON_PATH);
           fs.chmodSync(DAEMON_PATH, 0o755);
           console.log('[daemon] Install succeeded (non-elevated)');
           resolve(true);
         } catch (e2) {
+          // Clean up temp file on failure
+          try { fs.unlinkSync(tmpBin); } catch {}
           reject(new Error(err.message || 'Admin install cancelled or failed'));
         }
       } else {

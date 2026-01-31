@@ -570,7 +570,7 @@ ipcMain.handle('ioc/status', async () => {
 
 ipcMain.handle('ioc/listaddrs', async () => {
   const groupings = await safeRpc('listaddressgroupings', [], null);
-  if (Array.isArray(groupings)) {
+  if (Array.isArray(groupings) && groupings.length > 0) {
     const rows = [];
     groupings.forEach(g => {
       (g || []).forEach(([addr, amount, label]) => {
@@ -579,6 +579,7 @@ ipcMain.handle('ioc/listaddrs', async () => {
     });
     return rows;
   }
+  // Fallback: listaddressgroupings is empty (no tx history) or unsupported
   const addrs = await safeRpc('getaddressesbyaccount', [''], []);
   const rows = [];
   for (const a of addrs) {

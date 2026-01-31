@@ -633,12 +633,12 @@ ipcMain.handle('ioc/listtx', async (_e, n = 50) => {
   return Array.isArray(tx) ? tx : [];
 });
 
-/** Create a new receiving address and label it (compat: setaccount or setlabel). */
+/** Create a new receiving address and label it.
+ *  getnewaddress already assigns the account/label — no separate setaccount needed.
+ */
 async function createLabeledAddress(label='') {
   const addr = await safeRpc('getnewaddress', label ? [label] : [], null);
   if (!addr || typeof addr !== 'string') throw new Error('could not create address');
-  await safeRpc('setaccount', [addr, label], null);
-  await safeRpc('setlabel', [addr, label], null);
   return {address: addr, label};
 }
 

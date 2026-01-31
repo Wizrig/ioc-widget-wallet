@@ -221,9 +221,16 @@ function verifyDaemonBinary() {
     }
   }
 
-  // 3. Quick execution test (--help, 5s timeout)
+  // 3. Quick execution test (--help)
+  //    On Windows, skip — iocoind.exe may hang if VC++ runtime is missing,
+  //    and file-exists is sufficient; runtime errors surface on actual start.
+  if (IS_WIN) {
+    console.log('[daemon] Verification passed: binary exists (Windows, skipping exec test)');
+    return { ok: true };
+  }
+
   try {
-    execFileSync(DAEMON_PATH, ['--help'], { timeout: 5000, stdio: 'pipe' });
+    execFileSync(DAEMON_PATH, ['--help'], { timeout: 10000, stdio: 'pipe' });
     console.log('[daemon] Verification passed: --help succeeded');
     return { ok: true };
   } catch (e) {

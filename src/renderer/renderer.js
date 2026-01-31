@@ -873,16 +873,23 @@ function openNewAddrModal() {
   setTimeout(() => $('newLabel').focus(), 0);
 }
 
+let _creatingAddr = false;
 async function createNewAddr() {
-  const label = ($('newLabel').value || '').trim();
-  $('newAddrErr').textContent = '';
-  const res = await window.ioc.newAddr(label);
-  if (!res?.ok) { $('newAddrErr').textContent = 'Could not create address (daemon not ready?)'; return; }
-  const out = $('newAddrResult');
-  out.textContent = res.address;
-  out.classList.remove('hidden');
-  setTimeout(loadAddrs, 300);
-  setTimeout(() => { $('newAddrModal').classList.add('hidden'); }, 1200);
+  if (_creatingAddr) return;
+  _creatingAddr = true;
+  try {
+    const label = ($('newLabel').value || '').trim();
+    $('newAddrErr').textContent = '';
+    const res = await window.ioc.newAddr(label);
+    if (!res?.ok) { $('newAddrErr').textContent = 'Could not create address (daemon not ready?)'; return; }
+    const out = $('newAddrResult');
+    out.textContent = res.address;
+    out.classList.remove('hidden');
+    setTimeout(loadAddrs, 300);
+    setTimeout(() => { $('newAddrModal').classList.add('hidden'); }, 1200);
+  } finally {
+    setTimeout(() => { _creatingAddr = false; }, 1500);
+  }
 }
 
 function main() {

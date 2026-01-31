@@ -695,9 +695,13 @@ async function refresh() {
     } else {
       // Intel Macs need slower polling to avoid daemon performance issues
       const isIntel = !navigator.userAgent.includes('ARM') && !navigator.platform?.includes('arm');
-      const base = vp < 0.999
-        ? (isIntel ? 5000 : 1500)   // syncing: 5s Intel, 1.5s ARM
-        : (isIntel ? 8000 : 4000);  // synced:  8s Intel, 4s ARM
+      // Faster polling during splash sync phase so block count updates quickly
+      const isSplashSync = splashState.visible && splashState.phase === 'syncing';
+      const base = isSplashSync
+        ? (isIntel ? 2000 : 1000)   // splash sync: 2s Intel, 1s ARM
+        : vp < 0.999
+          ? (isIntel ? 5000 : 1500)   // syncing: 5s Intel, 1.5s ARM
+          : (isIntel ? 8000 : 4000);  // synced:  8s Intel, 4s ARM
       delay = isHidden ? Math.max(base, 10000) : base;
       if (timedOut) {
         delay = Math.max(delay, 6000);
@@ -730,9 +734,38 @@ async function loadAddrs() {
   xs.forEach(x => {
     const card = document.createElement('div');
     card.className = 'addr-card';
-    card.innerHTML = `<div class="label">${x.label || 'Address'}</div>
+    card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${x.label || 'Address'}</div>
       <div class="addr" title="Click to copy" style="cursor:pointer;user-select:text">${x.address}</div>`;
+    const labelEl = card.querySelector('.label');
     const addrEl = card.querySelector('.addr');
+    // Click label to edit
+    labelEl.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = x.label || '';
+      input.placeholder = 'Label';
+      input.style.cssText = 'width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:inherit;font:inherit;padding:2px 6px;';
+      labelEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const save = async () => {
+        const newLabel = (input.value || '').trim();
+        const res = await window.ioc.setLabel(x.address, newLabel);
+        if (res?.ok) x.label = newLabel;
+        const newEl = document.createElement('div');
+        newEl.className = 'label';
+        newEl.title = 'Click to edit label';
+        newEl.style.cursor = 'pointer';
+        newEl.textContent = x.label || 'Address';
+        input.replaceWith(newEl);
+        newEl.addEventListener('click', () => labelEl.click());
+        // Reload to get fresh data
+        loadAddrs();
+      };
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } if (e.key === 'Escape') { input.value = x.label || ''; input.blur(); } });
+    });
+    // Click address to copy
     addrEl.addEventListener('click', () => {
       navigator.clipboard.writeText(x.address).then(() => {
         addrEl.textContent = 'Copied!';

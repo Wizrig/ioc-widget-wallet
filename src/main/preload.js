@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('ioc', {
   listAddrs: () => ipcRenderer.invoke('ioc/listaddrs'),
   listTx: (n=50) => ipcRenderer.invoke('ioc/listtx', n),
   newAddr: (label='') => ipcRenderer.invoke('ioc/newaddr', label),
+  setLabel: (address, label) => ipcRenderer.invoke('ioc/setlabel', address, label),
   // First-run and data directory helpers
   getDataDir: () => ipcRenderer.invoke('ioc:getDataDir'),
   isFirstRun: () => ipcRenderer.invoke('ioc:isFirstRun'),

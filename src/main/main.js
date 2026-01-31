@@ -528,13 +528,13 @@ async function computeStatus() {
   }
 
   // ---- FAST chain+peers (only 2 RPCs, serialized via queue) ----
-  const chain = await safeRpc('getblockchaininfo', [], null)
-    || { blocks: await safeRpc('getblockcount', [], 0), headers: 0, verificationprogress: 0 };
-
-  const peers = await safeRpc('getconnectioncount', [], 0);
-
-  // Fetch remote tip (HTTP to explorer, not daemon RPC)
-  const remoteTip = await fetchRemoteTip().catch(() => 0);
+  // Run chain RPC and remote tip fetch in parallel to reduce latency
+  const [chain, peers, remoteTip] = await Promise.all([
+    safeRpc('getblockchaininfo', [], null)
+      .then(r => r || safeRpc('getblockcount', [], 0).then(b => ({ blocks: b, headers: 0, verificationprogress: 0 }))),
+    safeRpc('getconnectioncount', [], 0),
+    fetchRemoteTip().catch(() => 0)
+  ]);
 
   return { info: wc.data.info, chain, peers, staking: wc.data.staking, lockst: wc.data.lockst, remoteTip };
 }
@@ -544,9 +544,11 @@ ipcMain.handle('ioc/status', async () => {
     console.log('[ioc/status] Coalescing request (in-flight)');
     return await statusCache.inflight;
   }
-  if (statusCache.data && (now - statusCache.ts) < 3000) {
-    console.log(`[ioc/status] Serving from cache (age: ${now - statusCache.ts}ms)`);
-    return statusCache.data; // fresh enough (<=1s old)
+  // During sync (vp < 1), use shorter cache to keep splash responsive
+  const vp = statusCache.data?.chain?.verificationprogress || 0;
+  const maxAge = vp < 0.999 ? 1000 : 3000;
+  if (statusCache.data && (now - statusCache.ts) < maxAge) {
+    return statusCache.data;
   }
   const startTime = Date.now();
   console.log('[ioc/status] Starting new RPC batch');
@@ -585,11 +587,24 @@ ipcMain.handle('ioc/listaddrs', async () => {
     });
   }
 
-  // 2. getaddressesbyaccount — includes default wallet address and any
-  //    addresses created via getnewaddress, even with no tx history
-  const addrs = await safeRpc('getaddressesbyaccount', [''], []);
-  if (Array.isArray(addrs)) {
-    for (const a of addrs) {
+  // 2. listreceivedbyaddress 0 true — returns ALL addresses including empty
+  //    ones, with the account/label field. Not gated by enableaccounts.
+  const received = await safeRpc('listreceivedbyaddress', [0, true], []);
+  if (Array.isArray(received)) {
+    for (const entry of received) {
+      const addr = entry.address;
+      if (addr && !seen.has(addr)) {
+        seen.add(addr);
+        rows.push({address: addr, amount: entry.amount || 0, label: entry.account || ''});
+      }
+    }
+  }
+
+  // 3. getaddressesbyaccount '' — catch any remaining default keypool addresses
+  //    that listreceivedbyaddress might not include
+  const defaultAddrs = await safeRpc('getaddressesbyaccount', [''], []);
+  if (Array.isArray(defaultAddrs)) {
+    for (const a of defaultAddrs) {
       if (a && !seen.has(a)) {
         seen.add(a);
         rows.push({address: a, amount: 0, label: ''});
@@ -598,6 +613,19 @@ ipcMain.handle('ioc/listaddrs', async () => {
   }
 
   return rows;
+});
+
+ipcMain.handle('ioc/setlabel', async (_e, address, label) => {
+  try {
+    // Try setlabel first (newer RPC), fall back to setaccount (legacy)
+    const r1 = await safeRpc('setlabel', [address, label], '__FAIL__');
+    if (r1 === '__FAIL__') {
+      await safeRpc('setaccount', [address, label], null);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'failed' };
+  }
 });
 
 ipcMain.handle('ioc/listtx', async (_e, n = 50) => {

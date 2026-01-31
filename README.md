@@ -44,6 +44,11 @@ SHA256 checksums are published alongside each installer for verification.
 
 ### Linux
 
+AppImage requires FUSE. Most distributions include it by default, but on Fedora you may need:
+```bash
+sudo dnf install fuse fuse-libs
+```
+
 **AppImage:**
 ```bash
 chmod +x IOC.Widget.Wallet-*.AppImage

@@ -731,7 +731,14 @@ async function loadAddrs() {
     const card = document.createElement('div');
     card.className = 'addr-card';
     card.innerHTML = `<div class="label">${x.label || 'Address'}</div>
-      <div class="addr" title="Balance: ${Number(x.amount || 0).toLocaleString()}">${x.address}</div>`;
+      <div class="addr" title="Click to copy" style="cursor:pointer;user-select:text">${x.address}</div>`;
+    const addrEl = card.querySelector('.addr');
+    addrEl.addEventListener('click', () => {
+      navigator.clipboard.writeText(x.address).then(() => {
+        addrEl.textContent = 'Copied!';
+        setTimeout(() => { addrEl.textContent = x.address; }, 1200);
+      });
+    });
     grid.appendChild(card);
   });
 }

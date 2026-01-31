@@ -569,23 +569,34 @@ ipcMain.handle('ioc/status', async () => {
 /** ------------------------------------------- */
 
 ipcMain.handle('ioc/listaddrs', async () => {
+  const rows = [];
+  const seen = new Set();
+
+  // 1. listaddressgroupings — addresses with transaction history
   const groupings = await safeRpc('listaddressgroupings', [], null);
-  if (Array.isArray(groupings) && groupings.length > 0) {
-    const rows = [];
+  if (Array.isArray(groupings)) {
     groupings.forEach(g => {
       (g || []).forEach(([addr, amount, label]) => {
-        rows.push({address: addr, amount: amount || 0, label: label || ''});
+        if (!seen.has(addr)) {
+          seen.add(addr);
+          rows.push({address: addr, amount: amount || 0, label: label || ''});
+        }
       });
     });
-    return rows;
   }
-  // Fallback: listaddressgroupings is empty (no tx history) or unsupported
+
+  // 2. getaddressesbyaccount — includes default wallet address and any
+  //    addresses created via getnewaddress, even with no tx history
   const addrs = await safeRpc('getaddressesbyaccount', [''], []);
-  const rows = [];
-  for (const a of addrs) {
-    const amt = await safeRpc('getreceivedbyaddress', [a], 0);
-    rows.push({address: a, amount: amt || 0, label: ''});
+  if (Array.isArray(addrs)) {
+    for (const a of addrs) {
+      if (a && !seen.has(a)) {
+        seen.add(a);
+        rows.push({address: a, amount: 0, label: ''});
+      }
+    }
   }
+
   return rows;
 });
 

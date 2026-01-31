@@ -38,6 +38,8 @@ SHA256 checksums are published alongside each installer for verification.
 
 ### Windows
 
+The IOCoin daemon requires the **Microsoft Visual C++ Redistributable (x64)**. Most Windows systems already have it, but if the wallet fails to start the daemon, install it from [Microsoft's download page](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
 1. Run the downloaded `.exe` installer
 2. Follow the setup wizard
 3. Windows SmartScreen may appear on first run depending on signing — click **More info** then **Run anyway**

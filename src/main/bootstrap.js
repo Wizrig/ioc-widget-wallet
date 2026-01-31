@@ -163,27 +163,38 @@ async function extractBootstrap() {
     fs.mkdirSync(BOOTSTRAP_EXTRACT_DIR, { recursive: true });
 
     return new Promise((resolve) => {
-      // Extract to temp folder first
-      const unzipArgs = ['-o', BOOTSTRAP_ZIP_PATH, '-d', BOOTSTRAP_EXTRACT_DIR];
-
-      execFile('unzip', unzipArgs, { timeout: 600000 }, (err, stdout, stderr) => {
-        if (err) {
-          // Try ditto on macOS as fallback
-          if (process.platform === 'darwin') {
-            execFile('ditto', ['-xk', BOOTSTRAP_ZIP_PATH, BOOTSTRAP_EXTRACT_DIR], { timeout: 600000 }, (err2) => {
-              if (err2) {
-                resolve({ ok: false, error: `Extract failed: ${err2.message}` });
-              } else {
-                resolve({ ok: true });
-              }
-            });
-          } else {
+      // Extract to temp folder first — platform-aware
+      if (process.platform === 'win32') {
+        // Windows: use PowerShell Expand-Archive
+        const psCmd = `Expand-Archive -Path '${BOOTSTRAP_ZIP_PATH}' -DestinationPath '${BOOTSTRAP_EXTRACT_DIR}' -Force`;
+        execFile('powershell.exe', ['-NoProfile', '-Command', psCmd], { timeout: 600000 }, (err) => {
+          if (err) {
             resolve({ ok: false, error: `Extract failed: ${err.message}` });
+          } else {
+            resolve({ ok: true });
           }
-        } else {
-          resolve({ ok: true });
-        }
-      });
+        });
+      } else {
+        const unzipArgs = ['-o', BOOTSTRAP_ZIP_PATH, '-d', BOOTSTRAP_EXTRACT_DIR];
+        execFile('unzip', unzipArgs, { timeout: 600000 }, (err) => {
+          if (err) {
+            // Try ditto on macOS as fallback
+            if (process.platform === 'darwin') {
+              execFile('ditto', ['-xk', BOOTSTRAP_ZIP_PATH, BOOTSTRAP_EXTRACT_DIR], { timeout: 600000 }, (err2) => {
+                if (err2) {
+                  resolve({ ok: false, error: `Extract failed: ${err2.message}` });
+                } else {
+                  resolve({ ok: true });
+                }
+              });
+            } else {
+              resolve({ ok: false, error: `Extract failed: ${err.message}` });
+            }
+          } else {
+            resolve({ ok: true });
+          }
+        });
+      }
     });
   } catch (err) {
     return { ok: false, error: err.message };

@@ -419,6 +419,8 @@ async function unloadLaunchAgent() {
   });
 }
 
+function clearChild() { child = null; }
+
 module.exports = {
   DAEMON_PATH,
   DATA_DIR,
@@ -426,6 +428,7 @@ module.exports = {
   installLaunchAgent,
   unloadLaunchAgent,
   startDetached,
+  clearChild,
   stopViaCli,
   findDaemonBinary,
   findCliBinary,

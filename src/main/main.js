@@ -79,7 +79,7 @@ ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning,
-        startDetached, ensureDaemon, DAEMON_PATH } = require('./daemon');
+        startDetached, clearChild, ensureDaemon, DAEMON_PATH } = require('./daemon');
 
 ipcMain.handle('ioc:getDataDir', async () => {
   return DATA_DIR;
@@ -450,6 +450,8 @@ ipcMain.handle('ioc:restartDaemon', async () => {
   // Invalidate wallet cache so fresh lockst is fetched
   if (global.__iocWalletCache) global.__iocWalletCache.ts = 0;
   if (statusCache) statusCache.ts = 0;
+  // Clear stale child reference so startDetached spawns a new process
+  clearChild();
   // Start daemon fresh
   console.log('[daemon] Restarting daemon...');
   const ok = startDetached(DAEMON_PATH);
@@ -616,7 +618,8 @@ ipcMain.handle('ioc/listaddrs', async () => {
     }
   }
 
-  return rows;
+  // Hide unused keypool addresses (no label, zero balance, no tx history)
+  return rows.filter(r => r.label || r.amount > 0);
 });
 
 ipcMain.handle('ioc/setlabel', async (_e, address, label) => {

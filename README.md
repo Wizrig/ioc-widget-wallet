@@ -90,7 +90,8 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
   - Locking works immediately after unlock with instant UI feedback
 - **Wallet encryption** — unencrypted wallets show a grey lock icon with prompt to encrypt; encryption flow restarts the daemon automatically
 - **Send IOC** — send flow prompts to unlock if wallet is locked
-- **Address book** — manage contacts and labels
+- **Address book** — editable labels (click to rename), click-to-copy addresses, hover to see per-address balance
+- **Compact widget mode** — minimize to a small always-on-top widget showing live balance and staking
 - **Backup tools** — dump, import, open default data path, backup wallet.dat
 - **Debug tools** — start/stop live debug log tail
 - **Reduced polling load** — RPC calls are serialized through a queue to avoid flooding the daemon; user-initiated actions (lock/unlock) bypass the queue for instant response
@@ -99,15 +100,25 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 
 ---
 
-## Latest Patches (v0.1.0)
+## Latest Patches (v0.1.0 — RC6)
 
+- Balance via `getbalance` on fast path — updates every poll cycle, no stale balance after send/receive
+- Balance font auto-sizes correctly and grows back when the number gets shorter
+- Compact widget mode balance syncs directly from refresh loop
+- Address book: editable labels, hover shows per-address balance, click-to-copy
+- Address book: shows all addresses including labeled and default keypool addresses
+- Prevented double address creation (Enter + click race condition, redundant setaccount removed)
+- Sync splash: parallelized chain/peers/remoteTip fetches, faster polling during sync phase
+- Linux: fixed daemon install permission error on AppImage (FUSE mount not readable by root)
+- Windows: skip daemon exec verification (prevents ETIMEDOUT on missing VC++ runtime)
+- Windows: bootstrap extraction uses PowerShell Expand-Archive (no unzip on Windows)
 - Lock/unlock responsiveness: all RPC switched from CLI subprocess to HTTP JSON-RPC; serialized queue prevents daemon contention; user actions bypass queue
 - Lock state grace period: UI responds instantly on lock/unlock click without being overwritten by stale polling data
 - Wrong-password shake: only the password prompt shakes, not the lock icon; correct password never triggers shake
 - Daemon stop behavior: "Close Wallet Completely" reliably stops daemon; "Close UI Only" fully exits Electron process
 - Double-spawn prevention: PID check via pidfile/pgrep when RPC is unresponsive during startup
 - Warmup messaging: progressive status display (Loading daemon / this may take a few minutes / Loading blockchain index)
-- Polling load reduced: wallet state cached for 15s and refreshed in background; fast path polls only chain height and peer count
+- Polling load reduced: wallet state cached and refreshed in background; fast path polls chain height, peer count, and balance
 - DMG installer: proper icon spacing, signed and notarized, light arrow background with readable text
 
 ---

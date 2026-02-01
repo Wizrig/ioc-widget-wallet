@@ -507,10 +507,10 @@ const statusCache = { ts: 0, data: null, inflight: null };
 async function computeStatus() {
   const now = Date.now();
 
-  // ---- SLOW wallet cache (15s) — never blocks the fast path ----
+  // ---- SLOW wallet cache (5s) — never blocks the fast path ----
   if (!global.__iocWalletCache) global.__iocWalletCache = { ts: 0, data: { info: {}, staking: {}, lockst: {} }, refreshing: false };
   const wc = global.__iocWalletCache;
-  const walletFresh = wc.data && (now - wc.ts) < 15000;
+  const walletFresh = wc.data && (now - wc.ts) < 5000;
 
   // Kick off background wallet refresh if stale (don't await it)
   if (!walletFresh && !wc.refreshing) {
@@ -527,16 +527,20 @@ async function computeStatus() {
     })();
   }
 
-  // ---- FAST chain+peers (only 2 RPCs, serialized via queue) ----
-  // Run chain RPC and remote tip fetch in parallel to reduce latency
-  const [chain, peers, remoteTip] = await Promise.all([
+  // ---- FAST path: chain, peers, balance, remoteTip in parallel ----
+  const [chain, peers, balance, remoteTip] = await Promise.all([
     safeRpc('getblockchaininfo', [], null)
       .then(r => r || safeRpc('getblockcount', [], 0).then(b => ({ blocks: b, headers: 0, verificationprogress: 0 }))),
     safeRpc('getconnectioncount', [], 0),
+    safeRpc('getbalance', [], null),
     fetchRemoteTip().catch(() => 0)
   ]);
 
-  return { info: wc.data.info, chain, peers, staking: wc.data.staking, lockst: wc.data.lockst, remoteTip };
+  // Merge fast balance into info so renderer always gets current balance
+  const info = { ...wc.data.info };
+  if (typeof balance === 'number') info.balance = balance;
+
+  return { info, chain, peers, staking: wc.data.staking, lockst: wc.data.lockst, remoteTip };
 }
 ipcMain.handle('ioc/status', async () => {
   const now = Date.now();

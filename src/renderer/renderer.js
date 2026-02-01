@@ -488,9 +488,9 @@ function fitBalance() {
 
   const ctx = document.createElement('canvas').getContext('2d');
   const font = s => `800 ${s}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-  let size = 72, max = boxWidth - 30;
+  let size = 84, max = boxWidth - 30;
   while (size > 36) { ctx.font = font(size); if (ctx.measureText(span.textContent).width <= max) break; size -= 2; }
-  span.style.fontSize = size + 'px';
+  span.style.setProperty('font-size', size + 'px', 'important');
 }
 
 function scheduleRefresh(ms) {
@@ -540,8 +540,12 @@ async function refresh() {
         console.log('[balance] Ignoring 0 balance - preserving known balance:', last.bal);
       } else if (last.bal === null || last.bal !== bal) {
         // Update when changed OR on first valid balance (last.bal is null)
+        const balText = (Math.round(bal * 1000) / 1000).toLocaleString();
         const el = $('big-balance');
-        if (el) el.textContent = (Math.round(bal * 1000) / 1000).toLocaleString();
+        if (el) el.textContent = balText;
+        // Also update widget balance directly (compact mode)
+        const wBal = $('widget-balance');
+        if (wBal) wBal.textContent = balText;
         last.bal = bal;
         fitBalance();
       }
@@ -734,8 +738,9 @@ async function loadAddrs() {
   xs.forEach(x => {
     const card = document.createElement('div');
     card.className = 'addr-card';
+    const balText = typeof x.amount === 'number' ? `Balance: ${x.amount} IOC — Click to copy` : 'Click to copy';
     card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${x.label || 'Address'}</div>
-      <div class="addr" title="Click to copy" style="cursor:pointer;user-select:text">${x.address}</div>`;
+      <div class="addr" title="${balText}" style="cursor:pointer;user-select:text">${x.address}</div>`;
     const labelEl = card.querySelector('.label');
     const addrEl = card.querySelector('.addr');
     // Click label to edit
@@ -2648,8 +2653,8 @@ async function loadHistory() {
     const availW = Math.max(0, container.clientWidth - padW);
     const availH = Math.max(0, container.clientHeight - padH);
 
-    // Start near the current size, clamp to sane bounds
-    let target = Math.min(maxPx, Math.max(minPx, parseFloat(getComputedStyle(el).fontSize) || maxPx));
+    // Always start from maxPx so the font can grow back after shrinking
+    let target = maxPx;
     el.style.whiteSpace = 'nowrap';
     el.style.lineHeight = '1.06';
 

@@ -100,13 +100,14 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 
 ---
 
-## Latest Patches (v0.1.0 — RC6)
+## Latest Patches (v0.1.0 — RC7)
 
+- Daemon restart after encryption: fixed stale child process reference that prevented daemon from restarting after `encryptwallet`
+- Address book: hides unused keypool addresses (only shows labeled or funded addresses)
 - Balance via `getbalance` on fast path — updates every poll cycle, no stale balance after send/receive
 - Balance font auto-sizes correctly and grows back when the number gets shorter
 - Compact widget mode balance syncs directly from refresh loop
 - Address book: editable labels, hover shows per-address balance, click-to-copy
-- Address book: shows all addresses including labeled and default keypool addresses
 - Prevented double address creation (Enter + click race condition, redundant setaccount removed)
 - Sync splash: parallelized chain/peers/remoteTip fetches, faster polling during sync phase
 - Linux: fixed daemon install permission error on AppImage (FUSE mount not readable by root)

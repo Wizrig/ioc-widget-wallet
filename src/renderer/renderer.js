@@ -2658,18 +2658,10 @@ async function loadHistory() {
     el.style.whiteSpace = 'nowrap';
     el.style.lineHeight = '1.06';
 
-    // Quick two-pass tighten: height, then width
-    const fits = () => (el.scrollHeight <= availH && el.scrollWidth <= availW);
-
-    // First coarse downstep if needed
-    if (!fits()) {
-      target = Math.min(maxPx, Math.max(minPx, Math.min(availH / 1.1, availW / 7))); // rough guess
-      el.style.fontSize = `${target}px`;
-    }
-
-    // Fine tune: step down until it fits or we hit the floor
+    // Only constrain by width — container grows vertically to fit
+    el.style.fontSize = `${target}px`;
     let guard = 120;
-    while (!fits() && target > minPx && --guard > 0) {
+    while (el.scrollWidth > availW && target > minPx && --guard > 0) {
       target -= 1;
       el.style.fontSize = `${target}px`;
     }

@@ -48,7 +48,7 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 .panel-inner{background:var(--panel2);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:12px;padding:24px;text-align:center}
 .h3{font-weight:700;letter-spacing:.5px;margin-bottom:12px;opacity:.9}
 
-#bignum{background:var(--glass-darker);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:14px;padding:22px;display:flex;justify-content:center;align-items:center;margin:16px auto;overflow:hidden}
+#bignum{background:var(--glass-darker);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:14px;padding:22px;display:flex;justify-content:center;align-items:center;margin:16px 0;overflow:hidden;box-sizing:border-box;width:100%}
 #big-balance{font-weight:800;font-size:72px;letter-spacing:1px;color:#FFFFFF}
 .stake-line{margin:10px 0 14px 0;color:var(--muted);text-align:center}
 
@@ -214,7 +214,7 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 #tab-overview.page { padding-top: 12px !important; padding-bottom: 12px !important; }
 #tab-overview .panel { padding: 12px !important; }
 #tab-overview .panel-inner { padding: 18px 24px !important; }
-#tab-overview #bignum { margin: 8px auto !important; padding: 18px !important; }
+#tab-overview #bignum { margin: 8px 0 !important; padding: 18px !important; }
 #tab-overview .stake-line { margin-top: 10px !important; }
 #tab-overview .cta { margin-top: 12px !important; }
 #tab-overview .sync-wrap { padding: 8px 4px !important; margin-top: 10px !important; }

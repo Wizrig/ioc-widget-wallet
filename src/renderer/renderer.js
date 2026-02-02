@@ -500,7 +500,8 @@ function fitBalance() {
 
   const ctx = document.createElement('canvas').getContext('2d');
   const font = s => `800 ${s}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-  let size = 84, max = boxWidth - 30;
+  const pad = parseFloat(getComputedStyle(box).paddingLeft) + parseFloat(getComputedStyle(box).paddingRight);
+  let size = 84, max = boxWidth - pad - 8;
   while (size > 16) { ctx.font = font(size); if (ctx.measureText(span.textContent).width <= max) break; size -= 2; }
   span.style.setProperty('font-size', size + 'px', 'important');
 }
@@ -550,8 +551,9 @@ async function refresh() {
         const wBal = $('widget-balance');
         if (wBal) wBal.textContent = balText;
         last.bal = bal;
-        fitBalance();
       }
+      // Always re-fit: cheap canvas op, ensures correct sizing after compact→full transition
+      fitBalance();
     }
 
     // Check if we have valid chain data (not 0/0)
@@ -3214,6 +3216,11 @@ async function loadHistory() {
     isCompact = compact;
     document.body.classList.toggle('compact-mode', isCompact);
     if (isCompact) updateWidgetValues();
+    // Re-fit balance after expanding to full mode
+    if (!isCompact) {
+      requestAnimationFrame(() => requestAnimationFrame(() => fitBalance()));
+      setTimeout(() => fitBalance(), 300);
+    }
     // Save state
     try {
       localStorage.setItem('ioc-compact-mode', isCompact ? '1' : '0');
@@ -3228,6 +3235,13 @@ async function loadHistory() {
     // Tell main process to resize window
     if (window.ioc && window.ioc.setCompactMode) {
       await window.ioc.setCompactMode(isCompact);
+    }
+
+    // Re-fit balance after expanding to full mode — layout needs time to settle
+    if (!isCompact) {
+      requestAnimationFrame(() => requestAnimationFrame(() => fitBalance()));
+      // Second pass after window resize fully completes
+      setTimeout(() => fitBalance(), 300);
     }
 
     // Save state

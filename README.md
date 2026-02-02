@@ -1,5 +1,7 @@
 # IOC Widget Wallet
 
+![IOC Widget Wallet](assets/IOCoin_Widget_Wallet.png)
+
 Minimal Electron wallet for **I/O Coin (IOC)**.
 Provides a lightweight GUI to interact with `iocoind`.
 

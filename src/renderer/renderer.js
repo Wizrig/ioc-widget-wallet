@@ -501,7 +501,7 @@ function fitBalance() {
   const ctx = document.createElement('canvas').getContext('2d');
   const font = s => `800 ${s}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
   let size = 84, max = boxWidth - 30;
-  while (size > 36) { ctx.font = font(size); if (ctx.measureText(span.textContent).width <= max) break; size -= 2; }
+  while (size > 16) { ctx.font = font(size); if (ctx.measureText(span.textContent).width <= max) break; size -= 2; }
   span.style.setProperty('font-size', size + 'px', 'important');
 }
 

@@ -128,6 +128,10 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Warmup messaging: progressive status display (Loading daemon / this may take a few minutes / Loading blockchain index)
 - Polling load reduced: wallet state cached and refreshed in background; fast path polls chain height, peer count, and balance
 - DMG installer: proper icon spacing, signed and notarized, light arrow background with readable text
+- Bootstrap download label: "Downloading bootstrap" instead of "Downloading blockchain" for transparency
+- Sync block height: uses lightweight `getblockcount` via direct RPC (bypasses queue) with zero cache during sync — matches debug.log speed
+- Splash dismiss: three fallback conditions (within threshold blocks, verificationprogress >= 0.9999, stalled 30s) — prevents splash stuck after sync
+- Balance overflow: `fitBalance()` min font lowered from 36px to 16px so large balances (e.g., 2,112,000) fit within the panel
 
 ---
 

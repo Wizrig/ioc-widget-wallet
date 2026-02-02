@@ -796,9 +796,10 @@ async function loadAddrs() {
   const xs = await window.ioc.listAddrs();
   xs.forEach(x => {
     const card = document.createElement('div');
-    card.className = 'addr-card';
+    card.className = 'addr-card' + (x.change ? ' addr-change' : '');
     const balText = typeof x.amount === 'number' ? `Balance: ${x.amount} IOC — Click to copy` : 'Click to copy';
-    card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${x.label || 'Address'}</div>
+    const displayLabel = x.change ? 'Change' : (x.label || 'Address');
+    card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${displayLabel}</div>
       <div class="addr" title="${balText}" style="cursor:pointer;user-select:text">${x.address}</div>`;
     const labelEl = card.querySelector('.label');
     const addrEl = card.querySelector('.addr');

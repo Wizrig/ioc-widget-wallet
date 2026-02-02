@@ -693,8 +693,16 @@ ipcMain.handle('ioc/listaddrs', async () => {
     }
   }
 
+  // 3. Change addresses — UTXOs not seen in received or default keypool
+  for (const [addr, bal] of Object.entries(utxoBalance)) {
+    if (!seen.has(addr) && bal > 0) {
+      seen.add(addr);
+      rows.push({address: addr, amount: bal, label: '', change: true});
+    }
+  }
+
   // Hide unused keypool addresses (no label, zero balance, no tx history)
-  return rows.filter(r => r.label || r.amount > 0);
+  return rows.filter(r => r.label || r.amount > 0 || r.change);
 });
 
 ipcMain.handle('ioc/setlabel', async (_e, address, label) => {

@@ -881,17 +881,19 @@ async function doEncrypt() {
   $('encryptErr').textContent = '';
   if (!pass) { $('encryptErr').textContent = 'Passphrase is required'; return; }
   if (pass !== confirm) { $('encryptErr').textContent = 'Passphrases do not match'; return; }
+  // Close modal and show splash BEFORE encrypt — daemon dies mid-RPC
+  $('encryptModal').classList.add('hidden');
+  $('encryptPass').value = '';
+  $('encryptPassConfirm').value = '';
+  showSplash();
+  updateSplashStatus('Encrypting wallet…');
   try {
     await window.ioc.rpc('encryptwallet', [pass]);
   } catch (_) {
     // encryptwallet may error because daemon shuts down mid-RPC — that's expected
   }
-  // Close modal, show splash, restart daemon
-  $('encryptModal').classList.add('hidden');
-  $('encryptPass').value = '';
-  $('encryptPassConfirm').value = '';
-  updateSplashStatus('Wallet encrypted. Daemon is restarting…');
-  showSplash();
+  // Daemon is now dead — show restart message and restart
+  updateSplashStatus('Wallet encrypted. Restarting daemon…');
   try {
     const result = await window.ioc.restartDaemon();
     if (result?.ok) {

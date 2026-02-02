@@ -133,6 +133,8 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Splash dismiss: three fallback conditions (within threshold blocks, verificationprogress >= 0.9999, stalled 30s) — prevents splash stuck after sync
 - Balance overflow: `fitBalance()` min font lowered from 36px to 16px; `#bignum` forced to full parent width (`width:100%`, `margin:auto` removed) so canvas measurement has a real constraint; `fitBalance()` runs every refresh cycle and on compact→full transition with delayed re-fit for layout settling
 - Address book speed: dropped slow `listaddressgroupings` RPC; uses only `listreceivedbyaddress` + `getaddressesbyaccount` via direct RPC in parallel — loads near-instantly
+- Splash sync speed: `fetchRemoteTip` (explorer HTTPS) moved to background — no longer blocks the fast RPC path (was causing 20-second stalls)
+- Splash block display: reads block height directly from `debug.log` via dedicated IPC channel — matches `tail -f debug.log` exactly in real time; wallet/widget sync logic unchanged (still uses validated RPC block count)
 
 ---
 

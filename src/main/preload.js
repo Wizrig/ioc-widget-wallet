@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld('ioc', {
   rpc: (method, params=[]) => ipcRenderer.invoke('ioc:rpc', {method, params}),
   tryRpc: (method, params=[]) => ipcRenderer.invoke('ioc:tryRpc', {method, params}),
   status: () => ipcRenderer.invoke('ioc/status'),
+  logHeight: () => ipcRenderer.invoke('ioc/logheight'),
   listAddrs: () => ipcRenderer.invoke('ioc/listaddrs'),
   listTx: (n=50) => ipcRenderer.invoke('ioc/listtx', n),
   newAddr: (label='') => ipcRenderer.invoke('ioc/newaddr', label),

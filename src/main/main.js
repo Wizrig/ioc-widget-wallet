@@ -79,6 +79,26 @@ ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
 
 // ===== First-run and data directory IPC handlers =====
 const { DATA_DIR, isFirstRun } = require('../shared/constants');
+
+// Splash-only: read latest block height from debug.log (received blocks,
+// ahead of getblockcount which returns validated blocks).
+const _debugLogPath = require('path').join(DATA_DIR, 'debug.log');
+ipcMain.handle('ioc/logheight', async () => {
+  try {
+    const fs = require('fs');
+    const fd = fs.openSync(_debugLogPath, 'r');
+    const stat = fs.fstatSync(fd);
+    const size = Math.min(stat.size, 4096);
+    const buf = Buffer.alloc(size);
+    fs.readSync(fd, buf, 0, size, stat.size - size);
+    fs.closeSync(fd);
+    const re = /height=(\d+)/g;
+    let m, h = 0;
+    while ((m = re.exec(buf.toString('utf8'))) !== null) h = parseInt(m[1], 10);
+    return h || null;
+  } catch { return null; }
+});
+
 const { ensureConf, findDaemonBinary, findCliBinary, isDaemonRunning,
         startDetached, clearChild, ensureDaemon, DAEMON_PATH } = require('./daemon');
 
@@ -571,17 +591,21 @@ async function computeStatus() {
     ? safeDirect('getblockchaininfo').then(r => r || { blocks: 0, headers: 0, verificationprogress: 0 })
     : safeDirect('getblockcount').then(b => ({ blocks: b || 0, headers: 0, verificationprogress: 0 }));
 
-  const [chain, peers, balance, remoteTip] = await Promise.all([
+  // Kick off remote tip refresh in background — NEVER blocks the fast path.
+  fetchRemoteTip().catch(() => {});
+
+  const [chain, peers, balance] = await Promise.all([
     chainPromise,
     safeDirect('getconnectioncount', [], 0),
-    safeDirect('getbalance', [], null),
-    fetchRemoteTip().catch(() => 0)
+    safeDirect('getbalance', [], null)
   ]);
 
   // Merge fast balance into info so renderer always gets current balance
   const info = { ...wc.data.info };
   if (typeof balance === 'number') info.balance = balance;
 
+  // Use cached remote tip (refreshed in background).
+  const remoteTip = remoteTipCache.height || 0;
   return { info, chain, peers, staking: wc.data.staking, lockst: wc.data.lockst, remoteTip };
 }
 ipcMain.handle('ioc/status', async () => {

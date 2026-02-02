@@ -48,6 +48,7 @@ function hideSplash() {
   if (overlay) overlay.classList.add('hidden');
   document.body.classList.remove('splash-active');
   splashState.visible = false;
+  if (typeof _stopLogHeightPoller === 'function') _stopLogHeightPoller();
 }
 
 function updateSplashStatus(text) {
@@ -128,6 +129,30 @@ function startSplashSyncPhase(blocks) {
   splashState.syncStartTime = Date.now();
   splashState.syncStartBlocks = blocks;
   console.log('[splash] Started sync phase at block:', blocks);
+  _startLogHeightPoller();
+}
+
+// Standalone splash poller — reads debug.log height every 500ms,
+// completely independent of refresh()/computeStatus().
+let _logPollTimer = null;
+function _startLogHeightPoller() {
+  if (_logPollTimer) return;
+  _logPollTimer = setInterval(async () => {
+    if (!splashState.visible || splashState.phase !== 'syncing') {
+      _stopLogHeightPoller();
+      return;
+    }
+    try {
+      const lh = await window.ioc.logHeight();
+      if (typeof lh === 'number' && lh > 0) {
+        const tip = last.headers || 0;
+        updateSplashSyncStatus(lh, tip);
+      }
+    } catch {}
+  }, 500);
+}
+function _stopLogHeightPoller() {
+  if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
 }
 // ===== End Splash State =====
 
@@ -606,8 +631,8 @@ async function refresh() {
             // Transition from connecting to syncing phase
             startSplashSyncPhase(blocks);
           }
-          // Update splash with sync progress and ETA
-          updateSplashSyncStatus(blocks, networkTip);
+          // Splash text is updated by the standalone logHeight poller
+          // (started in startSplashSyncPhase). No update here.
           // Mark as connected (daemon is responding)
           connectionState.connected = true;
           connectionState.attempts = 0;

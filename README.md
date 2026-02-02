@@ -102,41 +102,42 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 
 ---
 
-## Latest Patches (v0.1.0 — RC8)
+## Release Notes (v0.1.0 — RC8)
 
-- Daemon restart after encryption: waits for process to fully exit (data-dir lock released) before respawning — no more "Cannot obtain a lock on data directory"
-- Send errors shown inline: insufficient funds, daemon errors displayed in send modal with shake feedback
-- Send while locked: shows "Unlock wallet to send" message inside the send modal instead of silently opening a separate unlock prompt
-- RPC error propagation: `ioc:rpc` handler now surfaces daemon errors to the renderer instead of swallowing them
-- RPC 500 handling: axios no longer throws on HTTP 500 — daemon error messages (e.g., "Insufficient funds") are parsed from JSON response body
-- Balance font: removed 6 competing hotfixes — `fitBalance()` is now the sole authority for balance font sizing
-- Balance updates: removed zero-balance guard that blocked legitimate balance changes to 0
-- History date format: removed extra comma after year in transaction timestamps
-- Daemon restart after encryption: fixed stale child process reference that prevented daemon from restarting after `encryptwallet`
-- Address book: hides unused keypool addresses (only shows labeled or funded addresses)
-- Balance via `getbalance` on fast path — updates every poll cycle, no stale balance after send/receive
-- Compact widget mode balance syncs directly from refresh loop
-- Address book: editable labels, hover shows per-address balance, click-to-copy
-- Prevented double address creation (Enter + click race condition, redundant setaccount removed)
-- Sync splash: parallelized chain/peers/remoteTip fetches, faster polling during sync phase
-- Linux: fixed daemon install permission error on AppImage (FUSE mount not readable by root)
-- Windows: skip daemon exec verification (prevents ETIMEDOUT on missing VC++ runtime)
-- Windows: bootstrap extraction uses PowerShell Expand-Archive (no unzip on Windows)
-- Lock/unlock responsiveness: all RPC switched from CLI subprocess to HTTP JSON-RPC; serialized queue prevents daemon contention; user actions bypass queue
-- Lock state grace period: UI responds instantly on lock/unlock click without being overwritten by stale polling data
-- Wrong-password shake: only the password prompt shakes, not the lock icon; correct password never triggers shake
-- Daemon stop behavior: "Close Wallet Completely" reliably stops daemon; "Close UI Only" fully exits Electron process
-- Double-spawn prevention: PID check via pidfile/pgrep when RPC is unresponsive during startup
-- Warmup messaging: progressive status display (Loading daemon / this may take a few minutes / Loading blockchain index)
-- Polling load reduced: wallet state cached and refreshed in background; fast path polls chain height, peer count, and balance
-- DMG installer: proper icon spacing, signed and notarized, light arrow background with readable text
-- Bootstrap download label: "Downloading bootstrap" instead of "Downloading blockchain" for transparency
-- Sync block height: uses lightweight `getblockcount` via direct RPC (bypasses queue) with zero cache during sync — matches debug.log speed
-- Splash dismiss: three fallback conditions (within threshold blocks, verificationprogress >= 0.9999, stalled 30s) — prevents splash stuck after sync
-- Balance overflow: `fitBalance()` min font lowered from 36px to 16px; `#bignum` forced to full parent width (`width:100%`, `margin:auto` removed) so canvas measurement has a real constraint; `fitBalance()` runs every refresh cycle and on compact→full transition with delayed re-fit for layout settling
-- Address book speed: dropped slow `listaddressgroupings` RPC; uses only `listreceivedbyaddress` + `getaddressesbyaccount` via direct RPC in parallel — loads near-instantly
-- Splash sync speed: `fetchRemoteTip` (explorer HTTPS) moved to background — no longer blocks the fast RPC path (was causing 20-second stalls)
-- Splash block display: reads block height directly from `debug.log` via dedicated IPC channel — matches `tail -f debug.log` exactly in real time; wallet/widget sync logic unchanged (still uses validated RPC block count)
+### Sync & Startup
+- Real-time splash sync — block height reads directly from `debug.log`, matches live chain progress exactly
+- Fast splash loading — remote tip fetch moved to background, no longer stalls the sync display
+- Reliable splash dismiss — three fallback conditions prevent the splash screen from getting stuck
+- Progressive warmup messages — "Loading daemon...", "this may take a few minutes", "Loading blockchain index..."
+
+### Send & Receive
+- Send errors displayed inline with shake feedback (insufficient funds, daemon errors)
+- "Unlock wallet to send" prompt shown inside send modal when wallet is locked
+
+### Lock / Unlock
+- Instant lock/unlock response — UI updates immediately, not overwritten by stale polling
+- Wrong password shakes the input field only — correct password never triggers a false shake
+
+### Balance & Display
+- Balance auto-scales from large to small amounts without overflow
+- Balance updates every poll cycle — no stale values after send or receive
+- Widget mode balance stays in sync with main wallet
+
+### Address Book
+- Near-instant loading — no longer uses slow RPC calls
+- Editable labels, per-address balance on hover, click-to-copy
+- Hides unused keypool addresses
+
+### Daemon Management
+- Reliable daemon restart after wallet encryption
+- "Close Wallet Completely" stops daemon and exits; "Close UI Only" leaves daemon running
+- Double-spawn prevention via PID tracking
+- All RPC over HTTP JSON-RPC with serialized queue; user actions bypass queue for instant response
+
+### Platform Fixes
+- **macOS:** signed and notarized DMG installer
+- **Windows:** bootstrap extraction via PowerShell; handles missing VC++ runtime gracefully
+- **Linux:** fixed daemon install permission on AppImage (FUSE mount)
 
 ---
 

@@ -594,15 +594,17 @@ async function computeStatus() {
   // Kick off remote tip refresh in background — NEVER blocks the fast path.
   fetchRemoteTip().catch(() => {});
 
-  const [chain, peers, balance] = await Promise.all([
+  const [chain, peers, balance, unconfBal] = await Promise.all([
     chainPromise,
     safeDirect('getconnectioncount', [], 0),
-    safeDirect('getbalance', [], null)
+    safeDirect('getbalance', [], null),
+    safeDirect('getunconfirmedbalance', [], 0)
   ]);
 
   // Merge fast balance into info so renderer always gets current balance
   const info = { ...wc.data.info };
   if (typeof balance === 'number') info.balance = balance;
+  if (typeof unconfBal === 'number') info.unconfirmedbalance = unconfBal;
 
   // Use cached remote tip (refreshed in background).
   const remoteTip = remoteTipCache.height || 0;
@@ -647,25 +649,36 @@ ipcMain.handle('ioc/listaddrs', async () => {
   const { rpcDirect } = require('./rpc');
   const safe = (m, p=[], fb=null) => rpcDirect(m, p).catch(() => fb);
 
-  // 2 fast RPC calls in parallel — bypasses serialization queue
-  // listreceivedbyaddress returns addresses, amounts, and labels (account field)
+  // 3 fast RPC calls in parallel — bypasses serialization queue
+  // listreceivedbyaddress returns addresses and labels (account field)
   // getaddressesbyaccount catches default-account keypool addresses
-  // listaddressgroupings dropped — it's slow and redundant for display
-  const [received, defaultAddrs] = await Promise.all([
+  // listunspent provides actual per-address balances from UTXOs
+  const [received, defaultAddrs, unspent] = await Promise.all([
     safe('listreceivedbyaddress', [0, true], []),
-    safe('getaddressesbyaccount', [''], [])
+    safe('getaddressesbyaccount', [''], []),
+    safe('listunspent', [0], [])
   ]);
+
+  // Build per-address balance from UTXOs (actual spendable balance)
+  const utxoBalance = {};
+  if (Array.isArray(unspent)) {
+    for (const u of unspent) {
+      if (u.address) {
+        utxoBalance[u.address] = (utxoBalance[u.address] || 0) + (u.amount || 0);
+      }
+    }
+  }
 
   const rows = [];
   const seen = new Set();
 
-  // 1. listreceivedbyaddress 0 true — all addresses with amounts and labels
+  // 1. listreceivedbyaddress 0 true — all addresses with labels
   if (Array.isArray(received)) {
     for (const entry of received) {
       const addr = entry.address;
       if (addr && !seen.has(addr)) {
         seen.add(addr);
-        rows.push({address: addr, amount: entry.amount || 0, label: entry.account || ''});
+        rows.push({address: addr, amount: utxoBalance[addr] || 0, label: entry.account || ''});
       }
     }
   }
@@ -675,7 +688,7 @@ ipcMain.handle('ioc/listaddrs', async () => {
     for (const a of defaultAddrs) {
       if (a && !seen.has(a)) {
         seen.add(a);
-        rows.push({address: a, amount: 0, label: ''});
+        rows.push({address: a, amount: utxoBalance[a] || 0, label: ''});
       }
     }
   }

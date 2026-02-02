@@ -581,6 +581,21 @@ async function refresh() {
       fitBalance();
     }
 
+    // Pending (unconfirmed) balance display
+    const unconf = Number(info.unconfirmedbalance || 0);
+    const pendEl = $('pending-line'), pendAmt = $('pending-amt');
+    const wPendEl = $('widget-pending'), wPendAmt = $('widget-pending-amt');
+    if (unconf > 0) {
+      const pendText = (Math.round(unconf * 1000) / 1000).toLocaleString();
+      if (pendAmt) pendAmt.textContent = pendText;
+      if (wPendAmt) wPendAmt.textContent = pendText;
+      if (pendEl) pendEl.classList.remove('hidden');
+      if (wPendEl) wPendEl.classList.remove('hidden');
+    } else {
+      if (pendEl) pendEl.classList.add('hidden');
+      if (wPendEl) wPendEl.classList.add('hidden');
+    }
+
     // Check if we have valid chain data (not 0/0)
     const hasValidChainData = blocks > 0 || headers > 0;
 
@@ -961,11 +976,23 @@ function main() {
   $('doEncrypt').addEventListener('click', doEncrypt);
   $('encryptPassConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') doEncrypt(); if (e.key === 'Escape') {$('encryptModal').classList.add('hidden');} });
 
-  $('sendBtn').addEventListener('click', () => { const e=$('sendErr'); if(e) e.textContent=''; $('sendModal').classList.remove('hidden'); });
+  $('sendBtn').addEventListener('click', () => {
+    if (state.encrypted === false) {
+      $('encryptModal').classList.remove('hidden');
+      return;
+    }
+    const e=$('sendErr'); if(e) e.textContent=''; $('sendModal').classList.remove('hidden');
+  });
   // Widget send button (compact mode)
   const widgetSendBtn = $('widget-send-btn');
   if (widgetSendBtn) {
-    widgetSendBtn.addEventListener('click', () => $('sendModal').classList.remove('hidden'));
+    widgetSendBtn.addEventListener('click', () => {
+      if (state.encrypted === false) {
+        $('encryptModal').classList.remove('hidden');
+        return;
+      }
+      $('sendModal').classList.remove('hidden');
+    });
   }
   $('cancelSend').addEventListener('click', () => $('sendModal').classList.add('hidden'));
   $('doSend').addEventListener('click', async () => {
@@ -1574,8 +1601,9 @@ async function loadHistory() {
 
       const addr = (t.address || t.txid || '').toString();
 
+      const isPending = (t.confirmations === 0);
       tr.innerHTML = `
-        <td class="c-when">${when}</td>
+        <td class="c-when">${when}${isPending ? ' <span class="tx-pending">pending</span>' : ''}</td>
         <td class="c-amt">${amt}</td>
         <td class="c-addr" title="${addr}">${addr}</td>
       `;

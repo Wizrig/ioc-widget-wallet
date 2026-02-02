@@ -244,9 +244,9 @@ async function runBootstrapFlow() {
 
     // STEP 1: Download bootstrap (daemon has NOT been started yet)
     splashState.phase = 'downloading';
-    updateSplashStatus('Downloading blockchain data…');
+    updateSplashStatus('Downloading bootstrap…');
     showBootstrapModal();
-    updateBootstrapUI('Downloading blockchain data...', 0, null);
+    updateBootstrapUI('Downloading bootstrap...', 0, null);
 
     // Listen for progress events
     window.ioc.onBootstrapProgress((progress) => {
@@ -258,8 +258,8 @@ async function runBootstrapFlow() {
       const pct = progress.percent || 0;
       const downloaded = formatBytes(progress.downloaded || 0);
       const total = formatBytes(progress.total || 0);
-      updateBootstrapUI(`Downloading blockchain data... (${downloaded} / ${total})`, pct, null);
-      updateSplashStatus(`Downloading blockchain… ${pct}%`);
+      updateBootstrapUI(`Downloading bootstrap... (${downloaded} / ${total})`, pct, null);
+      updateSplashStatus(`Downloading bootstrap… ${pct}%`);
     });
 
     const downloadResult = await window.ioc.downloadBootstrap();
@@ -576,9 +576,22 @@ async function refresh() {
         // Determine if we're close enough to hide splash
         const closeEnough = networkTip > 0 && blocksRemaining <= SPLASH_BLOCKS_THRESHOLD;
 
-        if (closeEnough) {
-          // Within 25 blocks of tip - hide splash and show wallet
-          console.log(`[splash] Within ${SPLASH_BLOCKS_THRESHOLD} blocks of tip (${blocksRemaining} remaining), hiding splash`);
+        // Fallback: if verificationprogress >= 0.9999 the daemon considers itself synced
+        const vpSynced = vp >= 0.9999;
+
+        // Fallback: if remoteTip is unavailable but blocks haven't moved for 30s, assume synced
+        if (!splashState.stalledSince) splashState.stalledSince = null;
+        if (blocks > 0 && blocks === last.blocks) {
+          if (!splashState.stalledSince) splashState.stalledSince = Date.now();
+        } else {
+          splashState.stalledSince = null;
+        }
+        const stalledLong = splashState.stalledSince && (Date.now() - splashState.stalledSince > 30000);
+
+        if (closeEnough || vpSynced || stalledLong) {
+          // Synced — hide splash and show wallet
+          const reason = closeEnough ? `within ${SPLASH_BLOCKS_THRESHOLD} blocks` : vpSynced ? `vp=${vp}` : 'stalled 30s';
+          console.log(`[splash] Sync complete (${reason}), hiding splash`);
           splashState.validStatusReceived = true;
           hideSplash();
           hideConnectBanner();
@@ -702,13 +715,13 @@ async function refresh() {
     } else {
       // Intel Macs need slower polling to avoid daemon performance issues
       const isIntel = !navigator.userAgent.includes('ARM') && !navigator.platform?.includes('arm');
-      // Faster polling during splash sync phase so block count updates quickly
+      // Faster polling during splash sync phase so block count updates in real time
       const isSplashSync = splashState.visible && splashState.phase === 'syncing';
       const base = isSplashSync
-        ? (isIntel ? 2000 : 1000)   // splash sync: 2s Intel, 1s ARM
+        ? 500                          // splash sync: 500ms — match debug.log speed
         : vp < 0.999
-          ? (isIntel ? 5000 : 1500)   // syncing: 5s Intel, 1.5s ARM
-          : (isIntel ? 8000 : 4000);  // synced:  8s Intel, 4s ARM
+          ? (isIntel ? 3000 : 1500)    // syncing (post-splash): 3s Intel, 1.5s ARM
+          : (isIntel ? 8000 : 4000);   // synced:  8s Intel, 4s ARM
       delay = isHidden ? Math.max(base, 10000) : base;
       if (timedOut) {
         delay = Math.max(delay, 6000);

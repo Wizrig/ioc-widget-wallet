@@ -557,11 +557,24 @@ async function computeStatus() {
   }
 
   // ---- FAST path: chain, peers, balance, remoteTip in parallel ----
+  // Use rpcDirect (bypasses serialization queue) for speed during sync.
+  // getblockcount is lightweight; getblockchaininfo is heavy and slow.
+  const { rpcDirect: directRpc } = require('./rpc');
+  const safeDirect = (m, p=[], fb=null) => directRpc(m, p).catch(() => fb);
+
+  // Use getblockcount (fast) while far from tip; switch to getblockchaininfo
+  // (has verificationprogress) once close so splash can detect sync complete.
+  const prevBlocks = statusCache.data?.chain?.blocks || 0;
+  const prevRemoteTip = remoteTipCache.height || 0;
+  const nearTip = prevRemoteTip > 0 && prevBlocks > 0 && (prevRemoteTip - prevBlocks) < 100;
+  const chainPromise = nearTip
+    ? safeDirect('getblockchaininfo').then(r => r || { blocks: 0, headers: 0, verificationprogress: 0 })
+    : safeDirect('getblockcount').then(b => ({ blocks: b || 0, headers: 0, verificationprogress: 0 }));
+
   const [chain, peers, balance, remoteTip] = await Promise.all([
-    safeRpc('getblockchaininfo', [], null)
-      .then(r => r || safeRpc('getblockcount', [], 0).then(b => ({ blocks: b, headers: 0, verificationprogress: 0 }))),
-    safeRpc('getconnectioncount', [], 0),
-    safeRpc('getbalance', [], null),
+    chainPromise,
+    safeDirect('getconnectioncount', [], 0),
+    safeDirect('getbalance', [], null),
     fetchRemoteTip().catch(() => 0)
   ]);
 
@@ -577,9 +590,12 @@ ipcMain.handle('ioc/status', async () => {
     console.log('[ioc/status] Coalescing request (in-flight)');
     return await statusCache.inflight;
   }
-  // During sync (vp < 1), use shorter cache to keep splash responsive
-  const vp = statusCache.data?.chain?.verificationprogress || 0;
-  const maxAge = vp < 0.999 ? 1000 : 3000;
+  // During sync: no cache (0ms) so block height updates instantly.
+  // Once synced: 3s cache to reduce load.
+  const cachedBlocks = statusCache.data?.chain?.blocks || 0;
+  const cachedTip = remoteTipCache.height || 0;
+  const synced = cachedTip > 0 && cachedBlocks > 0 && (cachedTip - cachedBlocks) < 25;
+  const maxAge = synced ? 3000 : 0;
   if (statusCache.data && (now - statusCache.ts) < maxAge) {
     return statusCache.data;
   }

@@ -581,8 +581,8 @@ async function refresh() {
       fitBalance();
     }
 
-    // Pending (unconfirmed) balance display
-    const unconf = Number(info.unconfirmedbalance || 0);
+    // Pending (unconfirmed) balance display — IOCoin daemon uses "pending" field from getinfo
+    const unconf = Number(info.pending || 0);
     const pendEl = $('pending-line'), pendAmt = $('pending-amt');
     const wPendEl = $('widget-pending'), wPendAmt = $('widget-pending-amt');
     if (unconf > 0) {

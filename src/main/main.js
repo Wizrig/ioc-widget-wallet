@@ -594,17 +594,17 @@ async function computeStatus() {
   // Kick off remote tip refresh in background — NEVER blocks the fast path.
   fetchRemoteTip().catch(() => {});
 
-  const [chain, peers, balance, unconfBal] = await Promise.all([
+  const [chain, peers, balance] = await Promise.all([
     chainPromise,
     safeDirect('getconnectioncount', [], 0),
-    safeDirect('getbalance', [], null),
-    safeDirect('getunconfirmedbalance', [], 0)
+    safeDirect('getbalance', [], null)
   ]);
 
   // Merge fast balance into info so renderer always gets current balance
+  // Pending balance comes from getinfo's "pending" field (IOCoin daemon
+  // does not support getunconfirmedbalance or getwalletinfo)
   const info = { ...wc.data.info };
   if (typeof balance === 'number') info.balance = balance;
-  if (typeof unconfBal === 'number') info.unconfirmedbalance = unconfBal;
 
   // Use cached remote tip (refreshed in background).
   const remoteTip = remoteTipCache.height || 0;

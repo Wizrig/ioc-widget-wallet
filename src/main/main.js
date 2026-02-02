@@ -66,7 +66,8 @@ async function safeRpc(method, params = [], fallback = null) {
 }
 
 ipcMain.handle('ioc:rpc', async (_e, {method, params}) => {
-  return await safeRpc(method, params, null);
+  const { rpc: httpRpc } = require('./rpc');
+  return await httpRpc(method, params);
 });
 
 ipcMain.handle('ioc:tryRpc', async (_e, {method, params}) => {
@@ -299,6 +300,25 @@ async function waitForDaemonStop(timeoutMs, intervalMs = 500) {
 }
 
 /**
+ * Wait for daemon process to fully exit (PID gone from OS).
+ * RPC may be down but the process can still be flushing to disk,
+ * holding the data-dir lock. Starting a new daemon before the
+ * lock is released causes "Cannot obtain a lock on data directory".
+ */
+async function waitForProcessExit(timeoutMs, intervalMs = 300) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const pid = findDaemonPid();
+    if (!pid) {
+      console.log('[exit] Daemon process fully exited');
+      return true;
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+/**
  * Find daemon PID from pidfile or pgrep.
  */
 function findDaemonPid() {
@@ -446,6 +466,13 @@ ipcMain.handle('ioc:restartDaemon', async () => {
   const stopped = await waitForDaemonStop(15000, 500);
   if (!stopped) {
     console.warn('[daemon] Daemon did not stop within timeout, attempting start anyway');
+  }
+  // RPC is down, but the process may still be flushing to disk.
+  // Wait for the actual process to exit so the data-dir lock is released.
+  console.log('[daemon] Waiting for process to fully exit...');
+  const processGone = await waitForProcessExit(10000, 300);
+  if (!processGone) {
+    console.warn('[daemon] Process still alive after timeout');
   }
   // Invalidate wallet cache so fresh lockst is fetched
   if (global.__iocWalletCache) global.__iocWalletCache.ts = 0;

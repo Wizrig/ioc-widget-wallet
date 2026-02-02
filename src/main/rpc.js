@@ -18,9 +18,9 @@ let _queue = Promise.resolve();
 
 function rpcDirect(method, params=[]) {
   const { u, p } = readCreds();
-  return axios.post('http://127.0.0.1:33765/', { jsonrpc:'2.0', id:1, method, params }, { auth:{ username:u, password:p }, timeout:20000 })
+  return axios.post('http://127.0.0.1:33765/', { jsonrpc:'2.0', id:1, method, params }, { auth:{ username:u, password:p }, timeout:20000, validateStatus: () => true })
     .then(({ data }) => {
-      if (data.error) throw new Error(data.error.message || 'RPC error');
+      if (data && data.error) throw new Error(data.error.message || 'RPC error');
       return data.result;
     });
 }

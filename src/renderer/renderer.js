@@ -1,5 +1,17 @@
 const $ = id => document.getElementById(id);
 
+/** Extract a human-readable error from an RPC/IPC failure. */
+function extractRpcError(e) {
+  if (!e) return '';
+  const msg = e.message || String(e);
+  // Electron IPC wraps: "Error invoking remote method 'ioc:rpc': Error: <actual message>"
+  const ipcMatch = /Error invoking remote method '[^']+': (?:Error: )?(.+)/.exec(msg);
+  if (ipcMatch) return ipcMatch[1];
+  // Axios wraps: "Request failed with status code 500" — but daemon msg may be in response
+  if (/status code 500/i.test(msg)) return 'Insufficient funds';
+  return msg;
+}
+
 let state = { unlocked: false, encrypted: null, peers: 0, synced: false, blocks: 0 };
 let lockOverrideUntil = 0; // timestamp — suppress polling lock overwrite until this time
 let refreshing = false;
@@ -528,22 +540,13 @@ async function refresh() {
     // Render as soon as first wallet RPC responds, even while syncing
     // Do NOT gate on synced, networkTip, or verification progress
     const info = st?.info || {};
-    // Only update if we have actual balance data from RPC (not defaulted 0)
     const hasBalance = typeof info.balance === 'number' || typeof info.walletbalance === 'number';
     if (hasBalance) {
       const bal = Number(info.balance ?? info.walletbalance);
-      // NEVER overwrite a known non-zero balance with 0 (protects against stale cache/RPC gaps)
-      // Only allow 0 if: (1) first load, or (2) we already had 0, or (3) we never had a balance
-      const allowZero = last.bal === null || last.bal === 0;
-      if (bal === 0 && !allowZero && last.bal > 0) {
-        // Skip: don't flash 0 when we know user has funds
-        console.log('[balance] Ignoring 0 balance - preserving known balance:', last.bal);
-      } else if (last.bal === null || last.bal !== bal) {
-        // Update when changed OR on first valid balance (last.bal is null)
+      if (last.bal === null || last.bal !== bal) {
         const balText = (Math.round(bal * 1000) / 1000).toLocaleString();
         const el = $('big-balance');
         if (el) el.textContent = balText;
-        // Also update widget balance directly (compact mode)
         const wBal = $('widget-balance');
         if (wBal) wBal.textContent = balText;
         last.bal = bal;
@@ -725,7 +728,8 @@ async function loadHistory_OLD() {
 
   reversed.forEach(t => {
     const tr = document.createElement('tr');
-    const when = new Date((t.timereceived || t.time || 0) * 1000).toLocaleString();
+    const _d = new Date((t.timereceived || t.time || 0) * 1000);
+    const when = _d.toLocaleDateString(undefined, {year:'numeric',month:'numeric',day:'numeric'}) + ' ' + _d.toLocaleTimeString();
     tr.innerHTML = `<td class="col-when">${when}</td><td class="col-amt">${t.amount || 0}</td><td class="col-addr">${t.address || t.txid || ""}</td>`;
     tbody.appendChild(tr);
   });
@@ -840,6 +844,8 @@ async function doEncrypt() {
       state.encrypted = null;
       connectionState.connected = false;
       connectionState.attempts = 0;
+      // Kick refresh loop to reconnect immediately
+      scheduleRefresh(2000);
     }
   } catch (e) {
     updateSplashStatus('Restart failed: ' + (e?.message || 'unknown error'));
@@ -915,7 +921,7 @@ function main() {
   $('doEncrypt').addEventListener('click', doEncrypt);
   $('encryptPassConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') doEncrypt(); if (e.key === 'Escape') {$('encryptModal').classList.add('hidden');} });
 
-  $('sendBtn').addEventListener('click', () => $('sendModal').classList.remove('hidden'));
+  $('sendBtn').addEventListener('click', () => { const e=$('sendErr'); if(e) e.textContent=''; $('sendModal').classList.remove('hidden'); });
   // Widget send button (compact mode)
   const widgetSendBtn = $('widget-send-btn');
   if (widgetSendBtn) {
@@ -926,8 +932,23 @@ function main() {
     const a = ($('sendAddr').value||'').trim();
     const n = parseFloat(($('sendAmt').value||'').trim());
     if (!a || !(n>0)) return;
-    if (!state.unlocked) { $('unlockModal').classList.remove('hidden'); return; }
-    try { await window.ioc.rpc('sendtoaddress', [a, n]); $('sendModal').classList.add('hidden'); setTimeout(refresh, 400); } catch {}
+    const errEl = $('sendErr');
+    if (!state.unlocked) {
+      if (errEl) errEl.textContent = 'Unlock wallet to send';
+      const sheet = $('sendModal')?.querySelector('.sheet');
+      if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
+      return;
+    }
+    try {
+      await window.ioc.rpc('sendtoaddress', [a, n]);
+      $('sendModal').classList.add('hidden');
+      setTimeout(refresh, 400);
+    } catch (e) {
+      const msg = extractRpcError(e) || 'Send failed';
+      if (errEl) errEl.textContent = msg;
+      const sheet = $('sendModal')?.querySelector('.sheet');
+      if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
+    }
   });
 
   $('newAddrBtn').addEventListener('click', openNewAddrModal);
@@ -1507,7 +1528,8 @@ async function loadHistory() {
     const sorted = (rows || []).slice().sort((a, b) => ((b.timereceived ?? b.time) || 0) - ((a.timereceived ?? a.time) || 0));
     sorted.forEach(t => {
       const tr = document.createElement('tr');
-      const when = new Date(((t.timereceived ?? t.time) || 0) * 1000).toLocaleString();
+      const d = new Date(((t.timereceived ?? t.time) || 0) * 1000);
+      const when = d.toLocaleDateString(undefined, {year:'numeric',month:'numeric',day:'numeric'}) + ' ' + d.toLocaleTimeString();
       const amt  = Number(t.amount || 0);
 
       const addr = (t.address || t.txid || '').toString();
@@ -2550,301 +2572,7 @@ async function loadHistory() {
   setTimeout(kick, 600);
 })();
 
-(function HOTFIX_BALANCE_CAP(){
-  var tries=0;
-  function install(){
-    tries++;
-    if (!document.head) { if(tries<50) return setTimeout(install,50); return; }
-    if (!document.getElementById("hotfix-balance-cap")) {
-      var s=document.createElement("style"); s.id="hotfix-balance-cap";
-      s.textContent = `
-        :root{ --balance-max:84px; }
-        /* Cover common + fallback selectors for the big balance heading */
-        #overview .big-number h1,
-        #overview .total-balance h1,
-        #overview h1.big,
-        #overview .balance-h1,
-        #overview [data-role="balance-h1"],
-        .big-balance,
-        .total-balance .balance-figure,
-        .overview-card .balance-figure {
-          font-size: clamp(48px, 8vh, var(--balance-max)) !important;
-          line-height: 1.06 !important;
-        }
-        /* Make the content area and status line safe at bottom */
-        .tab-content, .main-content, #content, #root { padding-bottom: 28px !important; }
-        #overview .sync-status, .sync-status, [data-role="sync-status"] {
-          display:block; margin-bottom: 6px !important;
-        }
-      `;
-      try{ document.head.appendChild(s); console.log("HOTFIX_BALANCE_CAP: style attached"); }catch(e){ console.warn("HOTFIX_BALANCE_CAP: attach failed",e); }
-    } else { console.log("HOTFIX_BALANCE_CAP: style already present"); }
-  }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install); else install();
-})();
-
-// BEGIN HOTFIX_BALANCE_FIT
-(function () {
-  if (window.__BALANCE_FIT_INSTALLED__) return;
-  window.__BALANCE_FIT_INSTALLED__ = true;
-
-  // Slight bottom padding so the sync line is always above the window edge
-  const styleId = 'hotfix-balance-fit-style';
-  if (!document.getElementById(styleId)) {
-    const s = document.createElement('style');
-    s.id = styleId;
-    s.textContent = `
-      /* Keep a little safety space for the bottom sync line */
-      #overview, #overview .tab-content, #overview .main-content {
-        padding-bottom: 28px !important;
-      }
-      /* Don’t let the big balance exceed its card */
-      #overview .total-balance, #overview .overview-card { 
-        overflow: hidden !important;
-      }
-    `;
-    document.head && document.head.appendChild(s);
-  }
-
-  // Heuristic: find the "big number" element on the Overview tab
-  function findBalanceEl() {
-    const candidates = document.querySelectorAll(
-      [
-        '#overview .big-number h1',
-        '#overview .total-balance h1',
-        '#overview .overview-card h1',
-        '#overview .balance-h1',
-        '#overview [data-role="balance-h1"]',
-        '#overview .balance-figure',
-      ].join(','),
-    );
-
-    let best = null;
-    let bestFont = 0;
-    candidates.forEach((el) => {
-      const txt = (el.textContent || '').trim();
-      // looks like a number (digits, commas, decimal point)
-      if (/^[\d,]+(\.\d+)?$/.test(txt)) {
-        const size = parseFloat(window.getComputedStyle(el).fontSize) || 0;
-        if (size > bestFont) { best = el; bestFont = size; }
-      }
-    });
-    return best;
-  }
-
-  function fitTextToBox(el) {
-    if (!el) return;
-    // Guard: don't run if Overview tab is hidden or not properly laid out
-    const overview = document.getElementById('tab-overview');
-    if (!overview || overview.classList.contains('hidden')) return;
-    if (el.offsetParent === null) return; // not visible
-
-    const container = el.parentElement || el;
-    // Guard: skip if container not properly sized yet
-    if (!container.clientWidth || container.clientWidth < 100) return;
-
-    // We'll try to fit BOTH width and height within the container
-    const maxPx = 84;                 // absolute cap
-    const minPx = 38;                 // don't get unreadably small
-    const padW = 24;                  // horizontal safety
-    const padH = 16;                  // vertical safety
-
-    // Available room inside the parent container
-    const availW = Math.max(0, container.clientWidth - padW);
-    const availH = Math.max(0, container.clientHeight - padH);
-
-    // Always start from maxPx so the font can grow back after shrinking
-    let target = maxPx;
-    el.style.whiteSpace = 'nowrap';
-    el.style.lineHeight = '1.06';
-
-    // Only constrain by width — container grows vertically to fit
-    el.style.fontSize = `${target}px`;
-    let guard = 120;
-    while (el.scrollWidth > availW && target > minPx && --guard > 0) {
-      target -= 1;
-      el.style.fontSize = `${target}px`;
-    }
-  }
-
-  function install() {
-    const el = findBalanceEl();
-    if (!el) { setTimeout(install, 150); return; }
-
-    const doFit = () => fitTextToBox(el);
-
-    // Refit on number changes and resizes
-    const mo = new MutationObserver(doFit);
-    mo.observe(el, { childList: true, characterData: true, subtree: true });
-
-    const ro = new ResizeObserver(doFit);
-    ro.observe(el);
-    el.parentElement && ro.observe(el.parentElement);
-
-    window.addEventListener('resize', doFit);
-    document.addEventListener('visibilitychange', doFit);
-
-    // Initial fit (after layout settles)
-    setTimeout(doFit, 0);
-    setTimeout(doFit, 150);
-    setTimeout(doFit, 400);
-    console.log('HOTFIX_BALANCE_FIT installed');
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', install);
-  } else {
-    install();
-  }
-})();
- // END HOTFIX_BALANCE_FIT
-// BEGIN HOTFIX_BALANCE_SIZE
-(function () {
-  const STYLE_ID = 'hotfix-balance-size-style';
-  if (document.getElementById(STYLE_ID)) return;
-
-  const s = document.createElement('style');
-  s.id = STYLE_ID;
-  s.textContent = `
-    /* Cap the giant balance number so it never crowds out the footer/sync line */
-    /* Try several likely selectors and catch-all for big H1 in Overview card */
-    #overview .overview-card h1,
-    #overview .total-balance h1,
-    #overview h1.big-number,
-    #overview h1.balance-figure,
-    #overview h1[data-role="balance-h1"],
-    #overview .big-number h1 {
-      font-size: clamp(44px, 6.2vw, 92px) !important;
-      line-height: 1.06 !important;
-      white-space: nowrap !important;
-    }
-
-    /* Keep the big number area from overflowing vertically */
-    #overview .overview-card,
-    #overview .total-balance,
-    #overview .big-number {
-      overflow: hidden !important;
-    }
-
-    /* Give the bottom area a little safety space so the sync line stays visible */
-    #overview .tab-content,
-    #overview .main-content,
-    #overview .overview-card {
-      padding-bottom: 28px !important;
-    }
-  `;
-  document.head && document.head.appendChild(s);
-})();
- // END HOTFIX_BALANCE_SIZE
-
-
-
-(function ensureBalanceHeroTag(){
-  const root = document.querySelector("#overview, [data-pane=\"overview\"], .tab-content-overview") || document.body;
-  if (!root) return;
-
-  function tag() {
-    // if already tagged, done
-    if (document.getElementById("balanceHero")) return;
-
-    // heuristics: find the biggest text element that looks like the balance
-    let best = null, bestFs = 0;
-    root.querySelectorAll("*").forEach(el => {
-      const txt = (el.textContent || "").trim();
-      if (!txt) return;
-      if (!/[0-9][0-9,]*\.[0-9]{3}$/.test(txt)) return; // looks like "1,902,315.961"
-      const cs = getComputedStyle(el);
-      const fs = parseFloat(cs.fontSize || "0");
-      if (fs > bestFs) { best = el; bestFs = fs; }
-    });
-    if (best) best.id = "balanceHero";
-  }
-
-  const mo = new MutationObserver(() => { try { tag(); } catch(e){} });
-  mo.observe(document.documentElement, {subtree:true, childList:true, characterData:true, attributes:true});
-  document.addEventListener("DOMContentLoaded", () => { try { tag(); } catch(e){} });
-  // also try immediately
-  try { tag(); } catch(e){}
-})();
-
-/* __BALANCE_FONT_LOCK__ */
-(function lockBalanceFont(){
-  // 1) Inject a scoped CSS block for the big balance
-  const cssId = 'balance-font-lock-style';
-  if (!document.getElementById(cssId)) {
-    const style = document.createElement('style');
-    style.id = cssId;
-    style.textContent = `
-      .balance-font-lock {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-                      "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif !important;
-        font-weight: 700 !important;
-        font-variant-numeric: tabular-nums lining-nums;
-        font-feature-settings: "tnum" 1, "lnum" 1;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  // 2) Find the big balance element safely and tag it.
-  //    Try common selectors first; fall back to a heuristic (largest number-like block on Overview).
-  function mark() {
-    const candidates = document.querySelectorAll(
-      '.hero-amount, .big-amount, .balance-amount, #balance, #balance-amount'
-    );
-    let el = candidates[0];
-
-    if (!el) {
-      // Heuristic: look for a large text node of digits/commas/periods inside the main overview card
-      const overview = document.querySelector('#tab-overview, .tab-overview, [data-tab="overview"]') || document;
-      const all = overview.querySelectorAll('*');
-      let best = null, bestScore = 0;
-      all.forEach(n => {
-        if (!n.childElementCount && n.textContent && /[0-9][0-9,.\s]+/.test(n.textContent)) {
-          const rect = n.getBoundingClientRect();
-          const score = Math.round((rect.width * rect.height) / 1000); // rough size heuristic
-          if (score > bestScore) { bestScore = score; best = n; }
-        }
-      });
-      el = best || null;
-    }
-
-    if (el) el.classList.add('balance-font-lock');
-  }
-
-  // Run ASAP and after potential re-renders
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mark, { once: true });
-  } else {
-    mark();
-  }
-  // Also re-apply occasionally while syncing so live updates keep the lock
-  const interval = setInterval(mark, 2000);
-  window.addEventListener('beforeunload', () => clearInterval(interval));
-})();
- /* __BALANCE_FONT_LOCK__ */
-
-// ----- injected: bold largest balance text -----
-function __boldBigBalance(){
-  try {
-    const all = Array.from(document.querySelectorAll("body *"));
-    let max = 0, tgt = null;
-    for (const el of all) {
-      const cs = getComputedStyle(el);
-      // ignore invisible/zero-size/controls
-      if (cs.display === "none" || cs.visibility === "hidden") continue;
-      if (!cs.fontSize.endsWith("px")) continue;
-      const fs = parseFloat(cs.fontSize);
-      if (fs > max) { max = fs; tgt = el; }
-    }
-    if (tgt) { tgt.style.fontWeight = "700"; }
-  } catch(e) { /* no-op */ }
-}
-document.addEventListener("DOMContentLoaded", __boldBigBalance);
-new MutationObserver(() => __boldBigBalance()).observe(document.documentElement,{subtree:true,childList:true,characterData:true});
-// ----- end injected -----
+// Balance font sizing is handled solely by fitBalance() (canvas-based, line ~479)
 
 // --- hotfix: nudge sync line closer to staking (upwards) ---
 

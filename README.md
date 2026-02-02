@@ -100,12 +100,19 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 
 ---
 
-## Latest Patches (v0.1.0 — RC7)
+## Latest Patches (v0.1.0 — RC8)
 
+- Daemon restart after encryption: waits for process to fully exit (data-dir lock released) before respawning — no more "Cannot obtain a lock on data directory"
+- Send errors shown inline: insufficient funds, daemon errors displayed in send modal with shake feedback
+- Send while locked: shows "Unlock wallet to send" message inside the send modal instead of silently opening a separate unlock prompt
+- RPC error propagation: `ioc:rpc` handler now surfaces daemon errors to the renderer instead of swallowing them
+- RPC 500 handling: axios no longer throws on HTTP 500 — daemon error messages (e.g., "Insufficient funds") are parsed from JSON response body
+- Balance font: removed 6 competing hotfixes — `fitBalance()` is now the sole authority for balance font sizing
+- Balance updates: removed zero-balance guard that blocked legitimate balance changes to 0
+- History date format: removed extra comma after year in transaction timestamps
 - Daemon restart after encryption: fixed stale child process reference that prevented daemon from restarting after `encryptwallet`
 - Address book: hides unused keypool addresses (only shows labeled or funded addresses)
 - Balance via `getbalance` on fast path — updates every poll cycle, no stale balance after send/receive
-- Balance font auto-sizes correctly and grows back when the number gets shorter
 - Compact widget mode balance syncs directly from refresh loop
 - Address book: editable labels, hover shows per-address balance, click-to-copy
 - Prevented double address creation (Enter + click race condition, redundant setaccount removed)

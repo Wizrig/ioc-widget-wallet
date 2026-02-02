@@ -132,6 +132,7 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Sync block height: uses lightweight `getblockcount` via direct RPC (bypasses queue) with zero cache during sync — matches debug.log speed
 - Splash dismiss: three fallback conditions (within threshold blocks, verificationprogress >= 0.9999, stalled 30s) — prevents splash stuck after sync
 - Balance overflow: `fitBalance()` min font lowered from 36px to 16px; `#bignum` forced to full parent width (`width:100%`, `margin:auto` removed) so canvas measurement has a real constraint; `fitBalance()` runs every refresh cycle and on compact→full transition with delayed re-fit for layout settling
+- Address book speed: dropped slow `listaddressgroupings` RPC; uses only `listreceivedbyaddress` + `getaddressesbyaccount` via direct RPC in parallel — loads near-instantly
 
 ---
 

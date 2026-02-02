@@ -620,25 +620,22 @@ ipcMain.handle('ioc/status', async () => {
 /** ------------------------------------------- */
 
 ipcMain.handle('ioc/listaddrs', async () => {
+  const { rpcDirect } = require('./rpc');
+  const safe = (m, p=[], fb=null) => rpcDirect(m, p).catch(() => fb);
+
+  // 2 fast RPC calls in parallel — bypasses serialization queue
+  // listreceivedbyaddress returns addresses, amounts, and labels (account field)
+  // getaddressesbyaccount catches default-account keypool addresses
+  // listaddressgroupings dropped — it's slow and redundant for display
+  const [received, defaultAddrs] = await Promise.all([
+    safe('listreceivedbyaddress', [0, true], []),
+    safe('getaddressesbyaccount', [''], [])
+  ]);
+
   const rows = [];
   const seen = new Set();
 
-  // 1. listaddressgroupings — addresses with transaction history
-  const groupings = await safeRpc('listaddressgroupings', [], null);
-  if (Array.isArray(groupings)) {
-    groupings.forEach(g => {
-      (g || []).forEach(([addr, amount, label]) => {
-        if (!seen.has(addr)) {
-          seen.add(addr);
-          rows.push({address: addr, amount: amount || 0, label: label || ''});
-        }
-      });
-    });
-  }
-
-  // 2. listreceivedbyaddress 0 true — returns ALL addresses including empty
-  //    ones, with the account/label field. Not gated by enableaccounts.
-  const received = await safeRpc('listreceivedbyaddress', [0, true], []);
+  // 1. listreceivedbyaddress 0 true — all addresses with amounts and labels
   if (Array.isArray(received)) {
     for (const entry of received) {
       const addr = entry.address;
@@ -649,9 +646,7 @@ ipcMain.handle('ioc/listaddrs', async () => {
     }
   }
 
-  // 3. getaddressesbyaccount '' — catch any remaining default keypool addresses
-  //    that listreceivedbyaddress might not include
-  const defaultAddrs = await safeRpc('getaddressesbyaccount', [''], []);
+  // 2. getaddressesbyaccount '' — remaining default keypool addresses
   if (Array.isArray(defaultAddrs)) {
     for (const a of defaultAddrs) {
       if (a && !seen.has(a)) {

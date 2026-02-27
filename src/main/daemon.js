@@ -301,28 +301,83 @@ async function ensureDaemon(sendStatus) {
 }
 
 // ---------------------------------------------------------------------------
-// isDaemonRunning — RPC check via CLI
+// isDaemonRunning — RPC check via CLI, fallback to HTTP RPC
 // ---------------------------------------------------------------------------
 function isDaemonRunning() {
   return new Promise((resolve) => {
     const cli = findCliBinary();
     if (!cli.found) {
-      resolve({ running: false, error: 'CLI binary not found' });
+      // No CLI binary — fall back to HTTP RPC check (common on Windows
+      // where only iocoind.exe is bundled, not iocoin-cli.exe)
+      isDaemonRunningHttp().then(resolve);
       return;
     }
 
     const args = ['getblockcount'];
     const child = execFile(cli.path, args, { timeout: 8000 }, (err, stdout) => {
       if (err) {
-        resolve({ running: false, error: err.message || 'daemon not responding' });
+        // CLI failed — try HTTP RPC as fallback before declaring not running
+        isDaemonRunningHttp().then(resolve);
       } else {
         const count = parseInt((stdout || '').trim(), 10);
         resolve({ running: true, blockCount: isNaN(count) ? 0 : count });
       }
     });
-    child.on('error', (e) => {
-      resolve({ running: false, error: e.message || 'cli exec failed' });
+    child.on('error', () => {
+      isDaemonRunningHttp().then(resolve);
     });
+  });
+}
+
+/**
+ * Check if daemon is running via HTTP RPC (fallback when CLI is unavailable).
+ * Reads credentials from iocoin.conf and makes a direct HTTP request.
+ */
+function isDaemonRunningHttp() {
+  return new Promise((resolve) => {
+    try {
+      const fs = require('node:fs');
+      if (!fs.existsSync(CONF_PATH)) {
+        resolve({ running: false, error: 'no conf file' });
+        return;
+      }
+      const txt = fs.readFileSync(CONF_PATH, 'utf8');
+      const u = /rpcuser=(.+)/.exec(txt)?.[1]?.trim() ?? '';
+      const p = /rpcpassword=(.+)/.exec(txt)?.[1]?.trim() ?? '';
+      if (!u || !p) {
+        resolve({ running: false, error: 'no RPC credentials' });
+        return;
+      }
+      const http = require('node:http');
+      const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getblockcount', params: [] });
+      const auth = Buffer.from(`${u}:${p}`).toString('base64');
+      const req = http.request({
+        hostname: '127.0.0.1', port: 33765, method: 'POST', timeout: 5000,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.result !== undefined && json.result !== null) {
+              const count = parseInt(json.result, 10);
+              resolve({ running: true, blockCount: isNaN(count) ? 0 : count });
+            } else {
+              resolve({ running: false, error: json.error?.message || 'RPC error' });
+            }
+          } catch {
+            resolve({ running: false, error: 'invalid RPC response' });
+          }
+        });
+      });
+      req.on('error', () => resolve({ running: false, error: 'daemon not responding' }));
+      req.on('timeout', () => { req.destroy(); resolve({ running: false, error: 'RPC timeout' }); });
+      req.write(body);
+      req.end();
+    } catch {
+      resolve({ running: false, error: 'HTTP RPC check failed' });
+    }
   });
 }
 
@@ -337,8 +392,7 @@ function ensureConf() {
       'rpcuser=iocoinrpc',
       `rpcpassword=${rpcPassword}`,
       'addnode=amer.supernode.iocoin.io',
-      'addnode=emea.supernode.iocoin.io',
-      'addnode=apac.supernode.iocoin.io'
+      'addnode=emea.supernode.iocoin.io'
     ].join('\n');
     fs.writeFileSync(CONF_PATH, conf);
   }
@@ -347,6 +401,10 @@ function ensureConf() {
 // ---------------------------------------------------------------------------
 // startDetached — simple spawn, detach, unref (RC3-stable pattern)
 // No PID file — daemon PID is found at shutdown via iocoind.pid or pgrep.
+//
+// On Windows, the daemon runs as a foreground process (no fork/daemon=1).
+// We wait briefly after spawn to detect immediate crashes (missing DLLs,
+// VC++ runtime absent, corrupt binary, data-dir lock conflict).
 // ---------------------------------------------------------------------------
 let child;
 
@@ -355,10 +413,40 @@ function startDetached(iocoindPath) {
   if (child?.pid) return true;
   const usePath = iocoindPath || DAEMON_PATH;
   try {
-    const spawnOpts = { detached: true, stdio: 'ignore' };
-    child = spawn(usePath, [`-datadir=${DATA_DIR}`], spawnOpts);
-    child.unref();
-    console.log('[daemon] Spawned PID:', child.pid);
+    const isWin = process.platform === 'win32';
+
+    if (isWin) {
+      // Windows: iocoind.exe runs as a foreground process (no daemon=1).
+      // Use windowsHide to suppress the console window.
+      // detached:true + stdio:'ignore' + unref() ensures the daemon
+      // survives Electron exit. We also listen for early crashes.
+      const spawnOpts = {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      };
+      child = spawn(usePath, [`-datadir=${DATA_DIR}`], spawnOpts);
+
+      // Listen for early exit to log crash reason
+      child.once('exit', (code, signal) => {
+        if (code !== null && code !== 0) {
+          console.error(`[daemon] iocoind exited immediately (code ${code}, signal ${signal})`);
+        }
+      });
+      child.once('error', (err) => {
+        console.error('[daemon] iocoind spawn error:', err.message);
+      });
+
+      child.unref();
+      console.log('[daemon] Spawned PID:', child.pid, '(Windows, windowsHide)');
+    } else {
+      // Unix: daemon=1 in iocoin.conf means the process forks to background.
+      const spawnOpts = { detached: true, stdio: 'ignore' };
+      child = spawn(usePath, [`-datadir=${DATA_DIR}`], spawnOpts);
+      child.unref();
+      console.log('[daemon] Spawned PID:', child.pid);
+    }
+
     return true;
   } catch (e) {
     console.error('[daemon] startDetached failed:', e.message);
@@ -374,6 +462,37 @@ function stopViaCli(iocCliPath) {
     const p = spawn(iocCliPath || DAEMON_PATH, ['stop'], { stdio: 'ignore' });
     p.on('exit', (code) => code === 0 ? resolve(true) : reject(new Error('stop failed')));
     p.on('error', (e) => reject(e));
+  });
+}
+
+/**
+ * Stop daemon via HTTP RPC (fallback when CLI is unavailable, e.g. Windows).
+ */
+function stopViaHttp() {
+  return new Promise((resolve, reject) => {
+    try {
+      const txt = fs.readFileSync(CONF_PATH, 'utf8');
+      const u = /rpcuser=(.+)/.exec(txt)?.[1]?.trim() ?? '';
+      const p = /rpcpassword=(.+)/.exec(txt)?.[1]?.trim() ?? '';
+      if (!u || !p) { reject(new Error('no RPC credentials')); return; }
+      const http = require('node:http');
+      const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'stop', params: [] });
+      const auth = Buffer.from(`${u}:${p}`).toString('base64');
+      const req = http.request({
+        hostname: '127.0.0.1', port: 33765, method: 'POST', timeout: 10000,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve(true));
+      });
+      req.on('error', (e) => reject(e));
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      req.write(body);
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -430,6 +549,7 @@ module.exports = {
   startDetached,
   clearChild,
   stopViaCli,
+  stopViaHttp,
   findDaemonBinary,
   findCliBinary,
   isDaemonRunning,

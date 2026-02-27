@@ -162,15 +162,33 @@ async function extractBootstrap() {
     }
     fs.mkdirSync(BOOTSTRAP_EXTRACT_DIR, { recursive: true });
 
+    // Log zip file size for debugging
+    const zipStats = fs.statSync(BOOTSTRAP_ZIP_PATH);
+    console.log(`[bootstrap] Zip size: ${(zipStats.size / (1024*1024)).toFixed(1)} MB`);
+
     return new Promise((resolve) => {
       // Extract to temp folder first — platform-aware
       if (process.platform === 'win32') {
-        // Windows: use PowerShell Expand-Archive
-        const psCmd = `Expand-Archive -Path '${BOOTSTRAP_ZIP_PATH}' -DestinationPath '${BOOTSTRAP_EXTRACT_DIR}' -Force`;
-        execFile('powershell.exe', ['-NoProfile', '-Command', psCmd], { timeout: 600000 }, (err) => {
-          if (err) {
-            resolve({ ok: false, error: `Extract failed: ${err.message}` });
+        // Windows: use tar (built into Windows 10+, much faster than Expand-Archive)
+        console.log('[bootstrap] Extracting with tar (Windows)...');
+        execFile('tar', ['-xf', BOOTSTRAP_ZIP_PATH, '-C', BOOTSTRAP_EXTRACT_DIR], { timeout: 600000 }, (tarErr) => {
+          if (tarErr) {
+            // Fallback: try PowerShell Expand-Archive (slower but always available)
+            console.log('[bootstrap] tar failed, falling back to Expand-Archive...');
+            console.log('[bootstrap] tar error:', tarErr.message);
+            const psCmd = `Expand-Archive -LiteralPath '${BOOTSTRAP_ZIP_PATH}' -DestinationPath '${BOOTSTRAP_EXTRACT_DIR}' -Force`;
+            execFile('powershell.exe', ['-NoProfile', '-Command', psCmd], { timeout: 900000 }, (psErr, _stdout, stderr) => {
+              if (psErr) {
+                const detail = stderr ? String(stderr).substring(0, 200) : psErr.message;
+                console.error('[bootstrap] Expand-Archive failed:', detail);
+                resolve({ ok: false, error: `Extract failed: ${detail}` });
+              } else {
+                console.log('[bootstrap] Expand-Archive succeeded');
+                resolve({ ok: true });
+              }
+            });
           } else {
+            console.log('[bootstrap] tar extraction succeeded');
             resolve({ ok: true });
           }
         });
@@ -224,10 +242,62 @@ async function applyBootstrapFiles() {
       }
     }
 
+    // Find the actual extract root — zip may contain nested folder
+    let extractRoot = BOOTSTRAP_EXTRACT_DIR;
+    const topLevel = fs.readdirSync(BOOTSTRAP_EXTRACT_DIR);
+    console.log(`[bootstrap] Extracted contents (top-level): ${topLevel.join(', ')}`);
+
+    // If the zip contained a single subfolder, look inside it
+    if (topLevel.length === 1) {
+      const single = path.join(BOOTSTRAP_EXTRACT_DIR, topLevel[0]);
+      if (fs.statSync(single).isDirectory()) {
+        const innerFiles = fs.readdirSync(single);
+        if (innerFiles.some(f => /^blk\d+\.dat$/i.test(f))) {
+          console.log(`[bootstrap] Found chain data inside subfolder: ${topLevel[0]}`);
+          extractRoot = single;
+        }
+      }
+    }
+
+    // Also check one more level deep (e.g. bootstrap/data/blk0001.dat)
+    if (extractRoot === BOOTSTRAP_EXTRACT_DIR) {
+      const hasBlk = topLevel.some(f => /^blk\d+\.dat$/i.test(f));
+      if (!hasBlk) {
+        // Search subdirectories for blk files
+        for (const dir of topLevel) {
+          const dirPath = path.join(BOOTSTRAP_EXTRACT_DIR, dir);
+          if (fs.statSync(dirPath).isDirectory()) {
+            const subFiles = fs.readdirSync(dirPath);
+            if (subFiles.some(f => /^blk\d+\.dat$/i.test(f))) {
+              console.log(`[bootstrap] Found chain data in nested folder: ${dir}`);
+              extractRoot = dirPath;
+              break;
+            }
+            // Check one more level
+            for (const sub of subFiles) {
+              const subPath = path.join(dirPath, sub);
+              try {
+                if (fs.statSync(subPath).isDirectory()) {
+                  const deepFiles = fs.readdirSync(subPath);
+                  if (deepFiles.some(f => /^blk\d+\.dat$/i.test(f))) {
+                    console.log(`[bootstrap] Found chain data in deep folder: ${dir}/${sub}`);
+                    extractRoot = subPath;
+                    break;
+                  }
+                }
+              } catch (_) {}
+            }
+            if (extractRoot !== BOOTSTRAP_EXTRACT_DIR) break;
+          }
+        }
+      }
+    }
+
     // Copy new files from extracted folder
-    const extractedFiles = fs.readdirSync(BOOTSTRAP_EXTRACT_DIR);
+    const extractedFiles = fs.readdirSync(extractRoot);
+    let copiedCount = 0;
     for (const file of extractedFiles) {
-      const srcPath = path.join(BOOTSTRAP_EXTRACT_DIR, file);
+      const srcPath = path.join(extractRoot, file);
       const destPath = path.join(DATA_DIR, file);
 
       // SAFETY: never overwrite wallet.dat — it may contain user keys
@@ -245,11 +315,21 @@ async function applyBootstrapFiles() {
         } else {
           fs.copyFileSync(srcPath, destPath);
         }
+        copiedCount++;
       }
     }
 
+    if (copiedCount === 0) {
+      console.error('[bootstrap] No chain data files found in extracted archive!');
+      console.error('[bootstrap] Extract root:', extractRoot);
+      console.error('[bootstrap] Files found:', extractedFiles.join(', '));
+      return { ok: false, error: 'No blockchain files found in bootstrap archive' };
+    }
+
+    console.log(`[bootstrap] Successfully copied ${copiedCount} chain data items`);
     return { ok: true };
   } catch (err) {
+    console.error('[bootstrap] Apply error:', err.message);
     return { ok: false, error: err.message };
   }
 }

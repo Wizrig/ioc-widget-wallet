@@ -34,7 +34,9 @@ contextBridge.exposeInMainWorld('ioc', {
   onCompactModeChanged: (cb) => {
     ipcRenderer.removeAllListeners('compact-mode-changed');
     ipcRenderer.on('compact-mode-changed', (_ev, isCompact) => cb(isCompact));
-  }
+  },
+  // App version
+  getVersion: () => ipcRenderer.invoke('ioc:getVersion')
 });
 (()=>{const e=require('electron');if(!globalThis.__iocSysExposed){e.contextBridge.exposeInMainWorld('sys',{openFolder:()=>e.ipcRenderer.send('sys:openFolder')});globalThis.__iocSysExposed=true}})();
 (()=>{const e=require('electron');if(!globalThis.__iocDiagExposed){e.contextBridge.exposeInMainWorld('diag',{startTail:()=>e.ipcRenderer.send('diag:start'),stopTail:()=>e.ipcRenderer.send('diag:stop'),onData:(cb)=>{e.ipcRenderer.removeAllListeners('diag:data');e.ipcRenderer.on('diag:data',(_,line)=>cb(line))}});globalThis.__iocDiagExposed=true}})();

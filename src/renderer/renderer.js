@@ -41,6 +41,8 @@ function showSplash(text) {
   if (status && text) status.textContent = text;
   document.body.classList.add('splash-active');
   splashState.visible = true;
+  // Start live log tail when splash is visible
+  if (typeof startSplashLog === 'function') startSplashLog();
 }
 
 function hideSplash() {
@@ -49,6 +51,8 @@ function hideSplash() {
   document.body.classList.remove('splash-active');
   splashState.visible = false;
   if (typeof _stopLogHeightPoller === 'function') _stopLogHeightPoller();
+  // Stop live log tail when splash hides
+  if (typeof stopSplashLog === 'function') stopSplashLog();
 }
 
 function updateSplashStatus(text) {
@@ -154,13 +158,58 @@ function _startLogHeightPoller() {
 function _stopLogHeightPoller() {
   if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
 }
+// ===== Live Log Viewer (splash/bootstrap) =====
+const MAX_LOG_LINES = 40;
+let _splashLogRunning = false;
+
+function startSplashLog() {
+  if (_splashLogRunning) return;
+  if (typeof window.diag === 'undefined') return;
+  _splashLogRunning = true;
+  window.diag.onData((line) => {
+    const logEl = document.getElementById('splashLog');
+    if (!logEl) return;
+    // Split multi-line chunks
+    const lines = String(line).split('\n').filter(l => l.trim().length > 0);
+    for (const l of lines) {
+      const div = document.createElement('div');
+      div.className = 'log-line';
+      // Highlight errors and successes
+      const lower = l.toLowerCase();
+      if (lower.includes('error') || lower.includes('failed')) {
+        div.classList.add('log-err');
+      } else if (lower.includes('accepted') || lower.includes('setbestchain') || lower.includes('successfully')) {
+        div.classList.add('log-ok');
+      }
+      div.textContent = l.length > 120 ? l.substring(0, 120) + '...' : l;
+      logEl.appendChild(div);
+    }
+    // Trim old lines
+    while (logEl.children.length > MAX_LOG_LINES) {
+      logEl.removeChild(logEl.firstChild);
+    }
+    // Auto-scroll to bottom
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+  window.diag.startTail();
+}
+
+function stopSplashLog() {
+  if (!_splashLogRunning) return;
+  _splashLogRunning = false;
+  if (typeof window.diag !== 'undefined') {
+    window.diag.stopTail();
+  }
+}
+// ===== End Live Log Viewer =====
+
 // ===== End Splash State =====
 
 // ===== Connection State (Step B3) =====
 let connectionState = {
   connected: false,
   attempts: 0,
-  maxAttempts: 8,       // ~30s total with backoff: 1+2+4+8+8+8+8+8 = 47s capped
+  maxAttempts: 30,       // ~4min total — daemon needs time to load block index after bootstrap
   startTime: null,
   lastError: null
 };
@@ -581,8 +630,8 @@ async function refresh() {
       fitBalance();
     }
 
-    // Pending (unconfirmed) balance display
-    const unconf = Number(info.unconfirmedbalance || 0);
+    // Pending (unconfirmed) balance display — IOCoin daemon uses "pending" field from getinfo
+    const unconf = Number(info.pending || 0);
     const pendEl = $('pending-line'), pendAmt = $('pending-amt');
     const wPendEl = $('widget-pending'), wPendAmt = $('widget-pending-amt');
     if (unconf > 0) {
@@ -796,9 +845,10 @@ async function loadAddrs() {
   const xs = await window.ioc.listAddrs();
   xs.forEach(x => {
     const card = document.createElement('div');
-    card.className = 'addr-card';
+    card.className = 'addr-card' + (x.change ? ' addr-change' : '');
     const balText = typeof x.amount === 'number' ? `Balance: ${x.amount} IOC — Click to copy` : 'Click to copy';
-    card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${x.label || 'Address'}</div>
+    const displayLabel = x.change ? 'Change' : (x.label || 'Address');
+    card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${displayLabel}</div>
       <div class="addr" title="${balText}" style="cursor:pointer;user-select:text">${x.address}</div>`;
     const labelEl = card.querySelector('.label');
     const addrEl = card.querySelector('.addr');
@@ -880,17 +930,19 @@ async function doEncrypt() {
   $('encryptErr').textContent = '';
   if (!pass) { $('encryptErr').textContent = 'Passphrase is required'; return; }
   if (pass !== confirm) { $('encryptErr').textContent = 'Passphrases do not match'; return; }
+  // Close modal and show splash BEFORE encrypt — daemon dies mid-RPC
+  $('encryptModal').classList.add('hidden');
+  $('encryptPass').value = '';
+  $('encryptPassConfirm').value = '';
+  showSplash();
+  updateSplashStatus('Encrypting wallet…');
   try {
     await window.ioc.rpc('encryptwallet', [pass]);
   } catch (_) {
     // encryptwallet may error because daemon shuts down mid-RPC — that's expected
   }
-  // Close modal, show splash, restart daemon
-  $('encryptModal').classList.add('hidden');
-  $('encryptPass').value = '';
-  $('encryptPassConfirm').value = '';
-  updateSplashStatus('Wallet encrypted. Daemon is restarting…');
-  showSplash();
+  // Daemon is now dead — show restart message and restart
+  updateSplashStatus('Wallet encrypted. Restarting daemon…');
   try {
     const result = await window.ioc.restartDaemon();
     if (result?.ok) {
@@ -1052,7 +1104,16 @@ function main() {
     refresh();
   })();
 }
-document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){}});
+document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){} loadVersion(); });
+
+// Load and display wallet version
+async function loadVersion() {
+  try {
+    const ver = await window.ioc.getVersion();
+    const el = document.getElementById('walletVersion');
+    if (el) el.textContent = ver ? `v${ver}` : '—';
+  } catch (_) {}
+}
 
 (function(){
   if (document.getElementById("hist-cols-css")) return;

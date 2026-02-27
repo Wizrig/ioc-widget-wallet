@@ -9,6 +9,7 @@ mac:
     - target: dmg
       arch:
         - arm64
+        - x64
 win:
   icon: assets/icon.png
   target:
@@ -21,25 +22,18 @@ files:
   - "package.json"
 dmg:
   sign: false
-  background: build/dmg/background.png
+  background: assets/img/dmg-background.png
+  iconSize: 80
   window:
-    width: 660
-    height: 480
+    width: 540
+    height: 380
   contents:
-    - x: 180
-      y: 170
-    - x: 480
-      y: 170
+    - x: 140
+      y: 190
+    - x: 400
+      y: 190
       type: link
       path: /Applications
-    - x: 180
-      y: 340
-      type: file
-      path: iocoind
-    - x: 480
-      y: 340
-      type: link
-      path: /usr/local/bin
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

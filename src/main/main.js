@@ -179,14 +179,32 @@ async function initDaemon() {
   // Step 4: Start daemon
   console.log('[daemon] Starting daemon from:', DAEMON_PATH);
   const started = startDetached(DAEMON_PATH);
-  if (started) {
-    daemonState.startedByUs = true;
-    console.log('[daemon] Daemon started successfully');
-    return { ok: true, started: true, path: DAEMON_PATH };
-  } else {
+  if (!started) {
     daemonState.error = 'Failed to start daemon';
     return { ok: false, error: 'Failed to start daemon' };
   }
+  daemonState.startedByUs = true;
+
+  // Step 5: Quick health check — wait up to 10s for RPC to respond.
+  // If the daemon crashes immediately (missing VC++ runtime, corrupt binary),
+  // we catch it here instead of leaving the splash stuck indefinitely.
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const check = await isDaemonRunning();
+    if (check.running) {
+      console.log('[daemon] Daemon is responsive');
+      return { ok: true, started: true, path: DAEMON_PATH };
+    }
+    const pid = findDaemonPid();
+    if (!pid && i >= 2) {
+      console.error('[daemon] Daemon process died shortly after spawn');
+      daemonState.error = 'Daemon crashed on startup — check VC++ runtime';
+      return { ok: false, error: 'Daemon crashed on startup. Install Microsoft Visual C++ Redistributable (x64) from https://aka.ms/vs/17/release/vc_redist.x64.exe' };
+    }
+  }
+  // Still not responsive after 10s — daemon may be slow loading index, proceed anyway
+  console.log('[daemon] Daemon not yet responsive after 10s, proceeding...');
+  return { ok: true, started: true, path: DAEMON_PATH };
 }
 // ===== End daemon IPC =====
 
@@ -237,17 +255,21 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
   try {
     // 1. Extract the bootstrap
     console.log('[bootstrap] Extracting bootstrap zip...');
-    sendProgress('extracting', 'Extracting blockchain files...');
+    sendProgress('extracting', 'Extracting blockchain data (this may take a few minutes)...');
     const extractResult = await bootstrap.extractBootstrap();
     if (!extractResult.ok) {
+      console.error('[bootstrap] Extraction failed:', extractResult.error);
+      sendProgress('error', `Extraction failed: ${extractResult.error}`);
       return extractResult;
     }
 
     // 2. Apply bootstrap files
     console.log('[bootstrap] Installing bootstrap files to DATA_DIR...');
-    sendProgress('applying', 'Installing blockchain files...');
+    sendProgress('applying', 'Copying blockchain files...');
     const applyResult = await bootstrap.applyBootstrapFiles();
     if (!applyResult.ok) {
+      console.error('[bootstrap] Apply failed:', applyResult.error);
+      sendProgress('error', `Install failed: ${applyResult.error}`);
       return applyResult;
     }
 
@@ -259,14 +281,48 @@ ipcMain.handle('ioc:applyBootstrap', async (event) => {
     // 4. Start daemon
     console.log('[bootstrap] Starting daemon with bootstrap data...');
     sendProgress('starting', 'Starting daemon...');
-    startDetached(DAEMON_PATH);
+    const started = startDetached(DAEMON_PATH);
+    if (!started) {
+      console.error('[bootstrap] Failed to start daemon after bootstrap');
+      sendProgress('error', 'Failed to start daemon');
+      return { ok: false, error: 'Failed to start daemon after bootstrap install' };
+    }
     daemonState.startedByUs = true;
     daemonState.binaryPath = DAEMON_PATH;
     daemonState.needsBootstrap = false;
 
+    // 5. Wait for daemon to become responsive (up to 30s)
+    //    The daemon needs a few seconds to load the block index.
+    //    If it crashes immediately (missing VC++ runtime, DLL error),
+    //    we detect it here instead of leaving the splash stuck forever.
+    console.log('[bootstrap] Waiting for daemon to become responsive...');
+    sendProgress('starting', 'Waiting for daemon to start...');
+    let alive = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const check = await isDaemonRunning();
+      if (check.running) {
+        alive = true;
+        console.log('[bootstrap] Daemon is responsive (block', check.blockCount + ')');
+        break;
+      }
+      // Check if the process is still alive (not crashed)
+      const pid = findDaemonPid();
+      if (!pid && i >= 3) {
+        // Process gone after 3+ seconds — daemon crashed
+        console.error('[bootstrap] Daemon process died — binary may be broken or missing VC++ runtime');
+        sendProgress('error', 'Daemon crashed on startup. Install Microsoft Visual C++ Redistributable (x64) and retry.');
+        return { ok: false, error: 'Daemon crashed on startup. Install Microsoft Visual C++ Redistributable (x64) from https://aka.ms/vs/17/release/vc_redist.x64.exe' };
+      }
+    }
+    if (!alive) {
+      console.warn('[bootstrap] Daemon not yet responsive after 30s — may still be loading index');
+    }
+
     return { ok: true, restarted: true };
   } catch (err) {
     console.error('[bootstrap] Apply error:', err);
+    sendProgress('error', `Setup failed: ${err.message || String(err)}`);
     return { ok: false, error: err.message || String(err) };
   }
 });
@@ -354,8 +410,21 @@ function findDaemonPid() {
     } catch (_) {}
   }
 
-  // Fallback: use pgrep on unix
-  if (process.platform !== 'win32') {
+  // Fallback: use pgrep on unix, tasklist on Windows
+  if (process.platform === 'win32') {
+    try {
+      const output = execSync('tasklist /FI "IMAGENAME eq iocoind.exe" /FO CSV /NH', { encoding: 'utf8', timeout: 5000 });
+      // CSV output: "iocoind.exe","1234","Console","1","12,345 K"
+      const match = /"iocoind\.exe","(\d+)"/.exec(output);
+      if (match) {
+        const pid = parseInt(match[1], 10);
+        if (pid > 0) {
+          console.log('[exit] Found daemon PID from tasklist:', pid);
+          return pid;
+        }
+      }
+    } catch (_) {}
+  } else {
     try {
       const output = execSync('pgrep -x iocoind', { encoding: 'utf8', timeout: 3000 });
       const pid = parseInt(output.trim().split('\n')[0], 10);
@@ -387,7 +456,16 @@ function killDaemonByPid(pid, signal) {
  * Force kill daemon by process name (last resort).
  */
 function killDaemonByName(signal) {
-  if (process.platform === 'win32') return false;
+  if (process.platform === 'win32') {
+    // Windows: use taskkill to force-kill iocoind.exe
+    try {
+      console.log('[exit] Running taskkill /IM iocoind.exe /F');
+      execSync('taskkill /IM iocoind.exe /F', { timeout: 5000 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
   const sigFlag = signal === 'SIGKILL' ? '-KILL' : '-TERM';
   try {
     console.log(`[exit] Running pkill ${sigFlag} iocoind`);
@@ -403,11 +481,11 @@ function killDaemonByName(signal) {
  * RC3-stable: CLI stop → SIGTERM by PID → SIGKILL by PID → pkill last resort.
  */
 async function stopDaemonAndQuitHard() {
-  const { stopViaCli, findCliBinary } = require('./daemon');
+  const { stopViaCli, stopViaHttp, findCliBinary } = require('./daemon');
 
   console.log('[exit] Starting hard shutdown sequence...');
 
-  // Step A: Attempt graceful stop via CLI
+  // Step A: Attempt graceful stop via CLI (or HTTP RPC if CLI unavailable)
   const cli = findCliBinary();
   if (cli.found) {
     console.log('[exit] Sending stop command via CLI...');
@@ -416,7 +494,17 @@ async function stopDaemonAndQuitHard() {
     } catch (err) {
       console.error('[exit] CLI stop failed:', err.message);
     }
+  } else {
+    // No CLI binary (common on Windows) — use HTTP RPC stop
+    console.log('[exit] CLI not found, sending stop via HTTP RPC...');
+    try {
+      await stopViaHttp();
+    } catch (err) {
+      console.error('[exit] HTTP RPC stop failed:', err.message);
+    }
+  }
 
+  {
     const stopped = await waitForDaemonStop(20000, 500);
     if (stopped) {
       console.log('[exit] Daemon stopped gracefully');
@@ -804,7 +892,11 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Initialize daemon (install+verify, check bootstrap, start if ready)
+  // Show window IMMEDIATELY so user sees the app launched
+  // Splash screen will display while daemon initializes
+  createWindow();
+
+  // Initialize daemon in background (install+verify, check bootstrap, start if ready)
   const daemonResult = await initDaemon();
   console.log('[app] Daemon init result:', daemonResult);
 
@@ -830,8 +922,6 @@ app.whenReady().then(async () => {
       return;
     }
   }
-
-  createWindow();
 });
 app.on('window-all-closed', () => {
   if (process.platform === 'darwin') {
@@ -865,6 +955,11 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
     win.setResizable(false);
 
     return true;
+  });
+
+  // App version handler
+  ipcMain.handle('ioc:getVersion', () => {
+    return app.getVersion();
   });
 })();
 

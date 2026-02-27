@@ -393,6 +393,30 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
   50% { transform: translateX(233%); }
   100% { transform: translateX(-100%); }
 }
+.splash-log {
+  margin-top: 14px;
+  width: 280px;
+  max-height: 90px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(0,0,0,0.35);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 9px;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.5);
+  text-align: left;
+  -webkit-app-region: no-drag;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.splash-log::-webkit-scrollbar { width: 4px; }
+.splash-log::-webkit-scrollbar-track { background: transparent; }
+.splash-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+.splash-log .log-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.splash-log .log-err { color: #ff6b6b; }
+.splash-log .log-ok { color: #4ecdc4; }
 /* ===== End Splash Overlay ===== */
 
 /* ===== Pending Balance ===== */
@@ -661,5 +685,20 @@ body.compact-mode .modal .err {
   font-size: 9px;
   min-height: 12px;
   margin-top: 4px;
+}
+
+/* Version info */
+.version-info {
+  margin-top: 12px;
+}
+.version-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+}
+.version-value {
+  color: rgba(255,255,255,0.9);
+  font-family: monospace;
 }
 

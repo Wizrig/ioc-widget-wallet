@@ -41,6 +41,8 @@ function showSplash(text) {
   if (status && text) status.textContent = text;
   document.body.classList.add('splash-active');
   splashState.visible = true;
+  // Start live log tail when splash is visible
+  if (typeof startSplashLog === 'function') startSplashLog();
 }
 
 function hideSplash() {
@@ -49,6 +51,8 @@ function hideSplash() {
   document.body.classList.remove('splash-active');
   splashState.visible = false;
   if (typeof _stopLogHeightPoller === 'function') _stopLogHeightPoller();
+  // Stop live log tail when splash hides
+  if (typeof stopSplashLog === 'function') stopSplashLog();
 }
 
 function updateSplashStatus(text) {
@@ -154,13 +158,58 @@ function _startLogHeightPoller() {
 function _stopLogHeightPoller() {
   if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
 }
+// ===== Live Log Viewer (splash/bootstrap) =====
+const MAX_LOG_LINES = 40;
+let _splashLogRunning = false;
+
+function startSplashLog() {
+  if (_splashLogRunning) return;
+  if (typeof window.diag === 'undefined') return;
+  _splashLogRunning = true;
+  window.diag.onData((line) => {
+    const logEl = document.getElementById('splashLog');
+    if (!logEl) return;
+    // Split multi-line chunks
+    const lines = String(line).split('\n').filter(l => l.trim().length > 0);
+    for (const l of lines) {
+      const div = document.createElement('div');
+      div.className = 'log-line';
+      // Highlight errors and successes
+      const lower = l.toLowerCase();
+      if (lower.includes('error') || lower.includes('failed')) {
+        div.classList.add('log-err');
+      } else if (lower.includes('accepted') || lower.includes('setbestchain') || lower.includes('successfully')) {
+        div.classList.add('log-ok');
+      }
+      div.textContent = l.length > 120 ? l.substring(0, 120) + '...' : l;
+      logEl.appendChild(div);
+    }
+    // Trim old lines
+    while (logEl.children.length > MAX_LOG_LINES) {
+      logEl.removeChild(logEl.firstChild);
+    }
+    // Auto-scroll to bottom
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+  window.diag.startTail();
+}
+
+function stopSplashLog() {
+  if (!_splashLogRunning) return;
+  _splashLogRunning = false;
+  if (typeof window.diag !== 'undefined') {
+    window.diag.stopTail();
+  }
+}
+// ===== End Live Log Viewer =====
+
 // ===== End Splash State =====
 
 // ===== Connection State (Step B3) =====
 let connectionState = {
   connected: false,
   attempts: 0,
-  maxAttempts: 8,       // ~30s total with backoff: 1+2+4+8+8+8+8+8 = 47s capped
+  maxAttempts: 30,       // ~4min total — daemon needs time to load block index after bootstrap
   startTime: null,
   lastError: null
 };
@@ -1055,7 +1104,16 @@ function main() {
     refresh();
   })();
 }
-document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){}});
+document.addEventListener('DOMContentLoaded', ()=>{ main(); try{ ensureHistoryLayout(); }catch(_){} loadVersion(); });
+
+// Load and display wallet version
+async function loadVersion() {
+  try {
+    const ver = await window.ioc.getVersion();
+    const el = document.getElementById('walletVersion');
+    if (el) el.textContent = ver ? `v${ver}` : '—';
+  } catch (_) {}
+}
 
 (function(){
   if (document.getElementById("hist-cols-css")) return;

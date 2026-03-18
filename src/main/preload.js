@@ -35,7 +35,8 @@ contextBridge.exposeInMainWorld('ioc', {
   hideWindow: () => ipcRenderer.invoke('ioc:hideWindow'),
   restartDaemon: () => ipcRenderer.invoke('ioc:restartDaemon'),
 
-  setCompactMode: (isCompact) => ipcRenderer.invoke('ioc:setCompactMode', isCompact),
+  setCompactMode: (isCompact, options = {}) =>
+    ipcRenderer.invoke('ioc:setCompactMode', { isCompact, options }),
   setSplashDebugExpanded: (expanded) => ipcRenderer.invoke('ioc:setSplashDebugExpanded', expanded),
   setHelpCenterWindow: (open, context = {}) => ipcRenderer.invoke('ioc:setHelpCenterWindow', { open, context }),
 

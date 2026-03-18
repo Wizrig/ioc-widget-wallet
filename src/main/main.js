@@ -7,26 +7,6 @@ const INITIAL_DAEMON_RPC_TIMEOUT_MS = 45000;
 const POST_BOOTSTRAP_DAEMON_RPC_TIMEOUT_MS = 60000;
 const EARLY_CRASH_GRACE_MS = 3000;
 
-function registerStartupWindowSizeLock() {
-  try {
-    if (global.__IOC_LOCKED_WINDOW__) return;
-    const { app, BrowserWindow } = require('electron');
-    app.on('browser-window-created', (_evt, win) => {
-      win.once('ready-to-show', () => {
-        try {
-          win.setResizable(false);
-          win.setMinimumSize(COMPACT_WINDOW_SIZE.width, COMPACT_WINDOW_SIZE.height);
-          win.setMaximumSize(COMPACT_WINDOW_SIZE.width, COMPACT_WINDOW_SIZE.height);
-          win.setSize(COMPACT_WINDOW_SIZE.width, COMPACT_WINDOW_SIZE.height, true);
-        } catch {}
-      });
-    });
-    global.__IOC_LOCKED_WINDOW__ = true;
-  } catch {}
-}
-
-registerStartupWindowSizeLock();
-
 try { require('./ipc-ui'); } catch {}
 try { require('./rpc-compat').init(); } catch {}
 const {app, BrowserWindow, ipcMain, screen, powerMonitor, Menu} = require('electron');
@@ -948,6 +928,11 @@ function createWindow() {
     backgroundColor: '#050A12',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {x: 14, y: 14},
+    resizable: false,
+    minWidth: COMPACT_WINDOW_SIZE.width,
+    minHeight: COMPACT_WINDOW_SIZE.height,
+    maxWidth: COMPACT_WINDOW_SIZE.width,
+    maxHeight: COMPACT_WINDOW_SIZE.height,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: false,
@@ -1045,6 +1030,12 @@ function applyMainMenu() {
           accelerator: 'F1',
           click: () => {
             openHelpCenterFromMenu();
+          }
+        },
+        {
+          label: 'Open Explorer',
+          click: () => {
+            shell.openExternal('https://iocexplorer.online/');
           }
         }
       ]
@@ -1168,15 +1159,20 @@ function registerCompactModeIpc() {
   if (global.__iocCompactRegistered) return;
   global.__iocCompactRegistered = true;
 
-  ipcMain.handle('ioc:setCompactMode', (event, isCompact) => {
+  ipcMain.handle('ioc:setCompactMode', (event, payload) => {
     const targetWin = BrowserWindow.fromWebContents(event.sender);
     if (!targetWin) return false;
 
+    const request = payload && typeof payload === 'object'
+      ? payload
+      : { isCompact: !!payload, options: {} };
+    const isCompact = !!request.isCompact;
+    const animate = request.options?.animate !== false;
     const size = isCompact ? RUNTIME_COMPACT_WIDGET_SIZE : FULL_WINDOW_SIZE;
     targetWin.setResizable(true);
     targetWin.setMinimumSize(size.width, size.height);
     targetWin.setMaximumSize(size.width, size.height);
-    resizeWindowFromCenter(targetWin, size);
+    resizeWindowFromCenter(targetWin, size, animate);
     targetWin.setResizable(false);
 
     broadcastCompactModeChange(isCompact);

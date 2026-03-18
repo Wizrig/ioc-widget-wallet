@@ -15,7 +15,7 @@
         <span class="splash-logo-ring" aria-hidden="true"></span>
         <img src="../../assets/icon.png" alt="IOCoin" class="splash-logo" onerror="this.parentElement.style.display='none'">
       </div>
-      <div id="splashStatus" class="splash-status">Loading daemonâ€¦</div>
+      <div id="splashStatus" class="splash-status">Loading daemon...</div>
       <div class="splash-progress">
         <div class="splash-bar"></div>
       </div>
@@ -54,7 +54,7 @@
   <div class="compact-widget">
     <div class="compact-widget-inner">
       <div class="widget-label">TOTAL I/O AVAILABLE</div>
-      <div class="widget-balance" id="widget-balance">â€”</div>
+      <div class="widget-balance" id="widget-balance">-</div>
       <div id="widget-pending" class="widget-pending hidden">+<span id="widget-pending-amt">0</span> pending</div>
       <div class="widget-staking">STAKING: <span class="value" id="widget-staking">0</span></div>
       <button class="widget-send" id="widget-send-btn"><span aria-hidden="true">&#9654;</span> Send</button>
@@ -73,7 +73,7 @@
     <div class="panel">
       <div class="panel-inner">
         <div class="h3">TOTAL I/O AVAILABLE</div>
-        <div id="bignum"><span id="big-balance">â€”</span></div>
+        <div id="bignum"><span id="big-balance">-</span></div>
         <div id="pending-line" class="pending-line hidden">+<span id="pending-amt">0</span> pending</div>
         <div class="stake-line">STAKING: <span id="staking">0</span></div>
         <button id="sendBtn" class="cta"><span aria-hidden="true">&#9654;</span> Send</button>
@@ -170,7 +170,7 @@
 
       <div class="settings-footer">
         <span class="version-label">Wallet Version</span>
-        <span class="version-value" id="walletVersion">â€”</span>
+        <span class="version-value" id="walletVersion">-</span>
       </div>
     </div>
   </div>
@@ -194,8 +194,8 @@
       <input id="encryptPassConfirm" type="password" placeholder="Confirm passphrase">
       <div class="err" id="encryptErr"></div>
       <div class="row">
-        <button id="cancelEncrypt" class="btn btn-danger">Cancel</button>
         <button id="doEncrypt" class="btn btn-ok">Confirm</button>
+        <button id="cancelEncrypt" class="btn btn-danger">Cancel</button>
       </div>
     </div>
   </div>
@@ -245,8 +245,8 @@
       <div class="err" id="newAddrErr"></div>
       <div id="newAddrResult" class="newaddr-result hidden"></div>
       <div class="row">
-        <button id="cancelNewAddr" class="btn">Cancel</button>
         <button id="createNewAddr" class="btn btn-ok">Create</button>
+        <button id="cancelNewAddr" class="btn">Cancel</button>
       </div>
     </div>
   </div>

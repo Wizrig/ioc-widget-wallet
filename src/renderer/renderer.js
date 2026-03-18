@@ -7,13 +7,13 @@ function extractRpcError(e) {
   // Electron IPC wraps: "Error invoking remote method 'ioc:rpc': Error: <actual message>"
   const ipcMatch = /Error invoking remote method '[^']+': (?:Error: )?(.+)/.exec(msg);
   if (ipcMatch) return ipcMatch[1];
-  // Axios wraps: "Request failed with status code 500" â€” but daemon msg may be in response
+  // Axios wraps: "Request failed with status code 500" - but daemon msg may be in response
   if (/status code 500/i.test(msg)) return 'Insufficient funds';
   return msg;
 }
 
 let state = { unlocked: false, encrypted: null, peers: 0, synced: false, blocks: 0 };
-let lockOverrideUntil = 0; // timestamp â€” suppress polling lock overwrite until this time
+let lockOverrideUntil = 0; // timestamp - suppress polling lock overwrite until this time
 let refreshing = false;
 let nextTimer = null;
 let last = { bal: null, stakeAmt: null, stakeOn: null, vp: 0, blocks: 0, headers: 0 };
@@ -754,7 +754,7 @@ function updateSplashSyncStatus(blocks, targetHeight) {
   if (!splashState.visible || splashState.phase !== 'syncing') return;
 
   const blocksRemaining = Math.max(0, targetHeight - blocks);
-  let statusText = `Syncing blocksâ€¦ ${blocks.toLocaleString()}`;
+  let statusText = `Syncing blocks... ${blocks.toLocaleString()}`;
 
   // Calculate ETA if we have sync start data
   if (splashState.syncStartTime && splashState.syncStartBlocks !== null) {
@@ -767,7 +767,7 @@ function updateSplashSyncStatus(blocks, targetHeight) {
       if (blocksPerSec > 0) {
         const secondsRemaining = blocksRemaining / blocksPerSec;
         const etaText = formatETA(secondsRemaining);
-        statusText = `Syncing blocksâ€¦ ${blocks.toLocaleString()} (~${etaText} remaining)`;
+        statusText = `Syncing blocks... ${blocks.toLocaleString()} (~${etaText} remaining)`;
       }
     }
   }
@@ -775,7 +775,7 @@ function updateSplashSyncStatus(blocks, targetHeight) {
   updateSplashStatus(statusText);
   if (targetHeight > 0) {
     setSplashMeta(
-      `Current block ${blocks.toLocaleString()} / Network tip ${targetHeight.toLocaleString()} â€¢ ${blocksRemaining.toLocaleString()} remaining`
+      `Current block ${blocks.toLocaleString()} / Network tip ${targetHeight.toLocaleString()} | ${blocksRemaining.toLocaleString()} remaining`
     );
   } else {
     setSplashMeta(`Current block ${blocks.toLocaleString()}`);
@@ -909,7 +909,7 @@ function startSplashSyncPhase(blocks) {
   _startLogHeightPoller();
 }
 
-// Standalone splash poller â€” reads debug.log height on a relaxed interval,
+// Standalone splash poller - reads debug.log height on a relaxed interval,
 // completely independent of refresh()/computeStatus().
 let _logPollTimer = null;
 function _startLogHeightPoller() {
@@ -1025,7 +1025,7 @@ function stopSplashLog() {
 let connectionState = {
   connected: false,
   attempts: 0,
-  maxAttempts: 30,       // ~4min total â€” daemon needs time to load block index after bootstrap
+  maxAttempts: 30,       // ~4min total - daemon needs time to load block index after bootstrap
   startTime: null,
   lastError: null
 };
@@ -1135,7 +1135,7 @@ async function runBootstrapFlow() {
 
     // STEP 1: Download bootstrap (daemon has NOT been started yet)
     setSplashPhase('downloading');
-    updateSplashStatus('Downloading bootstrapâ€¦');
+    updateSplashStatus('Downloading bootstrap...');
     showBootstrapModal();
     updateBootstrapUI('Downloading bootstrap...', 0, null);
 
@@ -1150,7 +1150,7 @@ async function runBootstrapFlow() {
       const downloaded = formatBytes(progress.downloaded || 0);
       const total = formatBytes(progress.total || 0);
       updateBootstrapUI(`Downloading bootstrap... (${downloaded} / ${total})`, pct, null);
-      updateSplashStatus(`Downloading bootstrapâ€¦ ${pct}%`);
+      updateSplashStatus(`Downloading bootstrap... ${pct}%`);
     });
 
     const downloadResult = await window.ioc.downloadBootstrap();
@@ -1160,7 +1160,7 @@ async function runBootstrapFlow() {
 
     // STEP 2: Extract, install bootstrap files, then start daemon (with 30s timeout)
     setSplashPhase('installing');
-    updateSplashStatus('Installing blockchain filesâ€¦');
+    updateSplashStatus('Installing blockchain files...');
     updateBootstrapUI('Installing blockchain files...', 100, null);
 
     const applyResult = await window.ioc.applyBootstrap();
@@ -1169,12 +1169,12 @@ async function runBootstrapFlow() {
       throw new Error(applyResult.error || 'Install failed');
     }
 
-    // Done â€” daemon started and responded
+    // Done - daemon started and responded
     bootstrapState.inProgress = false;
     bootstrapState.completed = true;
     updateBootstrapUI('Setup complete! Starting sync...', 100, null);
     setSplashPhase('connecting');
-    updateSplashStatus('Starting syncâ€¦');
+    updateSplashStatus('Starting sync...');
 
     await new Promise(r => setTimeout(r, 1500));
     hideBootstrapModal();
@@ -1582,7 +1582,7 @@ function setLock(unlocked, encrypted) {
   const chip = $('ic-lock');
 
   if (state.encrypted === false) {
-    // Unencrypted wallet â€” grey lock, open padlock shape
+    // Unencrypted wallet - grey lock, open padlock shape
     p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
     if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is unencrypted (click to encrypt it)'; }
   } else if (state.unlocked) {
@@ -1730,11 +1730,11 @@ async function refresh() {
         if (wBal) wBal.innerHTML = formatBalanceMarkup(bal);
         last.bal = bal;
       }
-      // Always re-fit: cheap canvas op, ensures correct sizing after compactâ†’full transition
+      // Always re-fit: cheap canvas op, ensures correct sizing after compact->full transition
       fitBalance();
     }
 
-    // Pending (unconfirmed) balance display â€” IOCoin daemon uses "pending" field from getinfo
+    // Pending (unconfirmed) balance display - IOCoin daemon uses "pending" field from getinfo
     const unconf = Number(info.pending || 0);
     const pendEl = $('pending-line'), pendAmt = $('pending-amt');
     const wPendEl = $('widget-pending'), wPendAmt = $('widget-pending-amt');
@@ -1776,14 +1776,14 @@ async function refresh() {
         const fullySynced = heightSynced || (networkTip <= 0 && vpSynced);
 
         if (fullySynced) {
-          // Synced â€” hide splash and show wallet
+          // Synced - hide splash and show wallet
           const reason = heightSynced ? `height=${blocks}` : `vp=${vp}`;
           console.log(`[splash] Sync complete (${reason}), hiding splash`);
           splashState.validStatusReceived = true;
           hideRebootstrapNotice({ disable: true });
           hideSplash();
           if (document.body.classList.contains('compact-mode') && window.ioc?.setCompactMode) {
-            Promise.resolve(window.ioc.setCompactMode(true)).catch(() => {});
+            Promise.resolve(window.ioc.setCompactMode(true, { animate: false })).catch(() => {});
           }
           hideConnectBanner();
           connectionState.connected = true;
@@ -1805,12 +1805,12 @@ async function refresh() {
           connectionState.attempts = 0;
         } else {
           // Have headers but no blocks yet - still warming up
-          updateSplashStatus('Loading daemonâ€¦');
+          updateSplashStatus('Loading daemon...');
         }
       } else {
         // No chain data yet - still warming up
         if (!splashState.longWaitShown) {
-          updateSplashStatus('Loading daemonâ€¦');
+          updateSplashStatus('Loading daemon...');
         }
       }
     } else {
@@ -1844,7 +1844,7 @@ async function refresh() {
       setLock(!locked, typeof isEncrypted === 'boolean' ? isEncrypted : undefined);
     }
 
-    // staking ON flag â€” only true when daemon reports actively staking (not just enabled)
+    // staking ON flag - only true when daemon reports actively staking (not just enabled)
     const stakingOn = !!(st?.staking?.staking);
     // staking AMOUNT (prefer getinfo.stake, fallback to getstakinginfo fields)
     const stakingAmt = Number(
@@ -1882,7 +1882,7 @@ async function refresh() {
             'Could not connect to iocoind. Ensure the daemon is installed and running.'
           );
         } else {
-          updateSplashStatus(`Starting daemonâ€¦ (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+          updateSplashStatus(`Starting daemon... (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
         }
       } else {
         if (connectionState.attempts >= connectionState.maxAttempts) {
@@ -1892,7 +1892,7 @@ async function refresh() {
             'Could not connect to iocoind. Ensure the daemon is installed and running.'
           );
         } else {
-          showConnectBanner(`Loading daemonâ€¦ (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
+          showConnectBanner(`Loading daemon... (attempt ${connectionState.attempts}/${connectionState.maxAttempts})`);
         }
       }
     }
@@ -2250,7 +2250,7 @@ async function loadAddrs() {
   xs.forEach(x => {
     const card = document.createElement('div');
     card.className = 'addr-card' + (x.change ? ' addr-change' : '');
-    const balText = typeof x.amount === 'number' ? `Balance: ${x.amount} IOC â€” Click to copy` : 'Click to copy';
+    const balText = typeof x.amount === 'number' ? `Balance: ${x.amount} IOC - Click to copy` : 'Click to copy';
     const displayLabel = x.change ? 'Change' : (x.label || 'Address');
     card.innerHTML = `<div class="label" title="Click to edit label" style="cursor:pointer">${displayLabel}</div>
       <div class="addr" title="${balText}" style="cursor:pointer;user-select:text">${x.address}</div>`;
@@ -2350,23 +2350,23 @@ async function doEncrypt() {
   $('encryptErr').textContent = '';
   if (!pass) { $('encryptErr').textContent = 'Passphrase is required'; return; }
   if (pass !== confirm) { $('encryptErr').textContent = 'Passphrases do not match'; return; }
-  // Close modal and show splash BEFORE encrypt â€” daemon dies mid-RPC
+  // Close modal and show splash BEFORE encrypt - daemon dies mid-RPC
   $('encryptModal').classList.add('hidden');
   $('encryptPass').value = '';
   $('encryptPassConfirm').value = '';
   showSplash();
-  updateSplashStatus('Encrypting walletâ€¦');
+  updateSplashStatus('Encrypting wallet...');
   try {
     await window.ioc.rpc('encryptwallet', [pass]);
   } catch (_) {
-    // encryptwallet may error because daemon shuts down mid-RPC â€” that's expected
+    // encryptwallet may error because daemon shuts down mid-RPC - that's expected
   }
-  // Daemon is now dead â€” show restart message and restart
-  updateSplashStatus('Wallet encrypted. Restarting daemonâ€¦');
+  // Daemon is now dead - show restart message and restart
+  updateSplashStatus('Wallet encrypted. Restarting daemon...');
   try {
     const result = await window.ioc.restartDaemon();
     if (result?.ok) {
-      updateSplashStatus('Daemon restarted. Loadingâ€¦');
+      updateSplashStatus('Daemon restarted. Loading...');
       // Reset state so polling picks up the new encrypted status
       state.encrypted = null;
       connectionState.connected = false;
@@ -2381,7 +2381,7 @@ async function doEncrypt() {
 
 async function onLockClick() {
   if (state.encrypted === false) {
-    // Wallet not encrypted â€” show encrypt modal
+    // Wallet not encrypted - show encrypt modal
     $('encryptPass').value = '';
     $('encryptPassConfirm').value = '';
     $('encryptErr').textContent = '';
@@ -3083,8 +3083,8 @@ function promptWithModal({ title, placeholder = '', type = 'text', value = '' })
       if (event.target === overlay) finish(null);
     });
 
-    actions.appendChild(cancelBtn);
     actions.appendChild(okBtn);
+    actions.appendChild(cancelBtn);
     sheet.appendChild(heading);
     sheet.appendChild(input);
     sheet.appendChild(actions);
@@ -3387,7 +3387,7 @@ async function toggleCompactMode() {
 
   if (!window.ioc?.setCompactMode) return;
   try {
-    await window.ioc.setCompactMode(nextCompact);
+    await window.ioc.setCompactMode(nextCompact, { animate: true });
   } catch (error) {
     console.warn('[compact] Failed to sync window mode with main process:', error?.message || error);
     setCompactModeState(wasCompact, { persist: true, refitBalance: true });

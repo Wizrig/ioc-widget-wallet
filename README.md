@@ -192,9 +192,8 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Improved modal layout and positioning in compact mode
 
 ### Windows
-- Added explicit Windows app menu (File, Edit, Help)
+- Modified Windows app menu (only File, Edit, Help showing)
 - Added Help menu shortcuts for Wallet Help Center (F1) and Open Explorer
-- Fixed splash-screen text encoding issue
 - Improved daemon startup guidance for missing runtime dependencies
 
 ---

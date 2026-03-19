@@ -1,8 +1,13 @@
 # IOC Widget Wallet
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
+![License](https://img.shields.io/github/license/Wizrig/ioc-widget-wallet)
+![Release](https://img.shields.io/github/v/release/Wizrig/ioc-widget-wallet)
+
 
 ![IOC Widget Wallet](assets/IOCoin_Widget_Wallet.png)
 
-Minimal Electron wallet for **I/O Coin (IOC)**.
+Lightweight Electron wallet for **I/O Coin (IOC)**.
+Designed for simplicity, fast sync, and safe wallet management without running a full desktop client.
 Provides a lightweight GUI to interact with `iocoind`.
 
 **Supported Platforms:**
@@ -21,7 +26,7 @@ Provides a lightweight GUI to interact with `iocoind`.
 - **Windows:** `%APPDATA%\IOCoin\`
 - **Linux:** `~/.iocoin/`
 
-At minimum, back up `wallet.dat` — but copying the full directory ensures you can restore everything if needed. Store the backup on a separate drive or external media. This applies to fresh installs, upgrades, and switching between wallet versions.
+At minimum, back up `wallet.dat`, losing this file means losing access to your funds. Copying the full directory ensures you can restore everything if needed. Store the backup on a separate drive or external media. This applies to fresh installs, upgrades, and switching between wallet versions.
 
 ---
 
@@ -78,66 +83,123 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 
 ## Wallet Features
 
-- **Automatic daemon management** — starts `iocoind` on launch or attaches to an already-running instance; prevents double-spawn via PID tracking
-- **Close Wallet Completely** — stops the daemon reliably and exits
-- **Close UI Only** — fully closes the Electron frontend while leaving the daemon running in the background; relaunching the wallet attaches to the running daemon
-- **Runtime warmup display** — shows "Loading daemon..." on startup, then "Loading daemon... this may take a few minutes" after 8 seconds, and "Loading blockchain index..." after 1 minute if the wallet has not fully loaded
-- **Bootstrap flow** — download, extract, and apply bootstrap archive with progress display, then continue syncing from the network
-- **Sync progress** — displays current block height vs network tip with adaptive polling intervals
-- **Balance display** — shows wallet balance immediately once daemon responds
-- **Staking display** — shows staking amount (not weight) with correct rules: greyed out when no coins are available
-- **Lock / Unlock**
-  - Wrong password: shakes the password prompt and shows "Wrong passphrase" — does not shake the lock icon
-  - Correct password: unlocks immediately with no shake and no false error
-  - Locking works immediately after unlock with instant UI feedback
-- **Wallet encryption** — unencrypted wallets show a grey lock icon with prompt to encrypt; encryption flow restarts the daemon automatically
-- **Send IOC** — send flow prompts to unlock if wallet is locked
-- **Address book** — editable labels (click to rename), click-to-copy addresses, hover to see per-address balance
-- **Compact widget mode** — minimize to a small always-on-top widget showing live balance and staking
-- **Backup tools** — dump, import, open default data path, backup wallet.dat
-- **Debug tools** — start/stop live debug log tail
-- **Reduced polling load** — RPC calls are serialized through a queue to avoid flooding the daemon; user-initiated actions (lock/unlock) bypass the queue for instant response
-- **Security** — PID tracking for app-started daemon only; no unsafe process killing; safe attach logic for externally-started daemons
-- **Checksums** — SHA256 checksums published for all release binaries
+### Core Wallet
+- Full-node IOC wallet with automatic daemon management (start or attach, with PID tracking)
+- Reliable shutdown options:
+  - Close Wallet Completely (stops daemon and exits)
+  - Close UI Only (keeps daemon running in background)
+- Runtime warmup and loading states with progressive messaging
+- Real-time sync progress (current height vs network tip with adaptive polling)
+- Automatic recovery after system sleep/hibernate
+
+### Sync & Bootstrap
+- Integrated bootstrap flow (download, extract, apply with progress display)
+- Automatic detection of newer bootstrap checkpoints
+- Guided rebootstrap flow with estimated time savings and confirmation step
+- Safe rebootstrap with automatic backup (wallet.dat, iocoin.conf, manifest)
+- Improved daemon startup with explicit readiness timeouts and clear failure handling
+
+### Sending & Transactions
+- Send IOC with unlock-on-demand flow
+- Fee modes: Fee on top / Fee included
+- Pre-send address validation (validateaddress)
+- Final confirmation step with full transaction breakdown
+- Sending disabled until full sync to prevent invalid transactions
+
+### Address Management
+- Manage "My Addresses" with editable labels and per-address balance
+- Local address book ("Recipients") with create/edit/delete
+- Quick recipient selection directly from Send flow
+- Click-to-copy addresses and improved UX interactions
+
+### Balance, Staking & History
+- Immediate balance display once daemon responds
+- Staking display with correct availability logic (greyed when inactive)
+- Full-width transaction history with columns: When, Amount, Address, Transaction
+- Direct "Open Tx" action for blockchain explorer
+- Improved balance formatting (whole/fraction split)
+- Consistent data across full view and compact widget
+
+### Security & Encryption
+- Wallet encryption flow with automatic daemon restart
+- Lock / Unlock behavior:
+  - Clear feedback for wrong passphrase
+  - Instant unlock without false errors
+  - Immediate locking with UI feedback
+- Safe daemon handling (no unsafe process killing, attach-aware logic)
+
+### Tools & Diagnostics
+- Wallet backup tools (dump, import, open data folder, backup wallet.dat)
+- Integrated Help Center with troubleshooting guidance and quick access (F1)
+- Live debug log viewer (start/stop + recent logs)
+- Reduced RPC load via queued requests with priority bypass for critical actions
+
+### UI & Experience
+- Modernized interface with improved layout and interaction flows
+- Compact widget mode (always-on-top with live balance and staking)
+- Improved modal behavior, focus states, and responsiveness
+- Organized settings sections (Wallet Tools, Explorer, Debug)
+
+### Windows Support
+- Native Windows menu (File, Edit, Help)
+- Quick access to wallet data folder via Explorer
+- Improved daemon startup guidance (VC++ runtime handling)
+- Fixed splash-screen text encoding issues
+
+### Integrity
+- SHA256 checksums published for all release binaries
 
 ---
 
-## Release Notes (v0.1.0 — RC8)
+## Release Notes (v0.1.1 — RC10)
 
 ### Sync & Startup
-- Real-time splash sync — block height reads directly from `debug.log`, matches live chain progress exactly
-- Fast splash loading — remote tip fetch moved to background, no longer stalls the sync display
-- Reliable splash dismiss — three fallback conditions prevent the splash screen from getting stuck
-- Progressive warmup messages — "Loading daemon...", "this may take a few minutes", "Loading blockchain index..."
+- Reworked splash sync experience with clearer status flow, ETA, and live progress information
+- Improved recovery behavior after system resume (sleep/hibernate)
+- Daemon startup now uses explicit readiness timeouts with clear failure handling instead of silent fallback
+- Fixed splash/status text encoding issues
 
 ### Send & Receive
-- Send errors displayed inline with shake feedback (insufficient funds, daemon errors)
-- "Unlock wallet to send" prompt shown inside send modal when wallet is locked
+- Sending is now blocked until full sync, with clear user-facing warning state
+- Send modal redesigned with recipient picker, fee mode (Fee on top / Fee included), and live summary
+- Added optional pre-send address validation (validateaddress) for early error detection
+- Final confirmation step added before broadcast, including fee and total debit breakdown
 
 ### Lock / Unlock
-- Instant lock/unlock response — UI updates immediately, not overwritten by stale polling
-- Wrong password shakes the input field only — correct password never triggers a false shake
+- Modal action order standardized so primary action appears first and Cancel appears second
+- Improved modal layout and positioning in compact mode
 
 ### Balance & Display
-- Balance auto-scales from large to small amounts without overflow
-- Balance updates every poll cycle — no stale values after send or receive
-- Widget mode balance stays in sync with main wallet
+- History redesigned to a full-width 4-column layout (When, Amount, Address, Transaction)
+- Added direct "Open Tx" action from history rows
+- Improved balance rendering with clearer whole/fraction formatting
+- Compact widget now mirrors overview values more reliably
 
 ### Address Book
-- Near-instant loading — no longer uses slow RPC calls
-- Editable labels, per-address balance on hover, click-to-copy
-- Hides unused keypool addresses
+- Refined "My Addresses" labeling and edit flow
+- Added "Recipients" section with local saved recipient management
+- Saved recipients integrated into Send flow
+
+### Bootstrap / Recovery
+- Added daily bootstrap metadata check to detect newer checkpoints
+- Rebootstrap advisory now includes estimated time savings and explicit confirmation flow
+- Added safety backup creation before rebootstrap apply (wallet.dat, iocoin.conf, manifest)
+- Improved bootstrap apply flow with proper daemon stop and file-lock handling
 
 ### Daemon Management
-- Reliable daemon restart after wallet encryption
-- "Close Wallet Completely" stops daemon and exits; "Close UI Only" leaves daemon running
-- Double-spawn prevention via PID tracking
-- All RPC over HTTP JSON-RPC with serialized queue; user actions bypass queue for instant response
+- Improved diagnostic logging and wallet backup handling
+- Replaced legacy injected patch-style code with centralized, maintainable logic
 
-### Platform Fixes
-- **macOS:** signed and notarized DMG installer
-- **Windows:** bootstrap extraction via PowerShell; handles missing VC++ runtime gracefully
-- **Linux:** fixed daemon install permission on AppImage (FUSE mount)
+### UI / UX Polish
+- Refined header, tabs, compact toggle behavior, and general layout
+- Reorganized settings into Wallet Tools, Chain Explorer, and Live Debug
+- Added in-app Wallet Help Center with structured navigation
+
+### Windows
+- Added explicit Windows app menu (File, Edit, Help)
+- Added Help menu shortcuts for Wallet Help Center (F1) and Open Explorer
+- Fixed splash-screen text encoding issue
+- Improved daemon startup guidance for missing runtime dependencies
 
 ---
 

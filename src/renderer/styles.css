@@ -1,19 +1,19 @@
 :root{
   /* IOCoin Glass UI Theme */
   --bg:#050A12;                              /* Dark navy base */
-  --glass:rgba(8, 18, 38, 0.60);             /* Glass panel background */
-  --glass-darker:rgba(4, 10, 24, 0.75);      /* Darker glass for balance panel */
-  --glass-border:rgba(255,255,255,0.08);     /* Glass border */
+  --glass:rgba(9, 17, 31, 0.64);             /* Glass panel background */
+  --glass-darker:rgba(12, 24, 42, 0.72);     /* Darker glass for balance panel */
+  --glass-border:rgba(168,198,223,0.18);     /* Glass border */
   --glass-blur:blur(14px);                   /* Backdrop blur */
-  --panel:rgba(8, 18, 38, 0.60);             /* Glass panel (alias) */
-  --panel2:rgba(12, 24, 48, 0.50);           /* Inner panel glass */
-  --card:rgba(16, 32, 56, 0.50);             /* Card backgrounds */
-  --card-hover:rgba(24, 44, 72, 0.60);       /* Hover state */
+  --panel:rgba(9, 17, 31, 0.64);             /* Glass panel (alias) */
+  --panel2:rgba(14, 27, 48, 0.56);           /* Inner panel glass */
+  --card:rgba(16, 30, 52, 0.62);             /* Card backgrounds */
+  --card-hover:rgba(22, 38, 64, 0.74);       /* Hover state */
   --ink:#FFFFFF;                             /* Primary text - white */
   --muted:rgba(255,255,255,0.65);            /* Secondary text */
   --icon-inactive:rgba(255,255,255,0.5);     /* Inactive icons */
-  --border:rgba(255,255,255,0.08);           /* Glass border */
-  --border-subtle:rgba(255,255,255,0.04);    /* Subtle dividers */
+  --border:rgba(168,198,223,0.14);           /* Glass border */
+  --border-subtle:rgba(168,198,223,0.07);    /* Subtle dividers */
   --accent:#33A2DA;                          /* IOCoin blue - ONLY accent */
   --debug-log-bg:rgba(0,0,0,0.35);           /* Shared debug output background */
   --chip:rgba(16, 32, 56, 0.50);             /* Chip background */
@@ -2533,11 +2533,14 @@ body:not(.compact-mode):not(.splash-active) .page{
   margin:12px !important;
   padding:12px !important;
   border-radius:22px !important;
-  border:1px solid rgba(126,214,255,0.26) !important;
-  background:linear-gradient(180deg, rgba(54,153,214,0.24) 0%, rgba(20,54,90,0.54) 100%) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(5,14,30,0.24) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
+  border:1px solid rgba(158,188,214,0.24) !important;
+  background:linear-gradient(180deg, rgba(7,12,22,0.92) 0%, rgba(5,10,18,0.94) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -28px 56px rgba(1,5,12,0.34),
+    0 14px 30px rgba(2,6,14,0.46) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
 }
 body:not(.compact-mode):not(.splash-active) #tab-overview,
 body:not(.compact-mode):not(.splash-active) #tab-history,
@@ -2896,9 +2899,12 @@ body.compact-mode:not(.splash-active) .compact-widget-inner{
   max-width:none !important;
   max-height:none !important;
   min-height:0 !important;
-  background:linear-gradient(180deg, rgba(54,153,214,0.24) 0%, rgba(20,54,90,0.54) 100%) !important;
-  border:1px solid rgba(126,214,255,0.26) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(5,14,30,0.24) !important;
+  background:linear-gradient(180deg, rgba(7,12,22,0.92) 0%, rgba(5,10,18,0.94) 100%) !important;
+  border:1px solid rgba(158,188,214,0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -20px 44px rgba(1,5,12,0.32),
+    0 12px 28px rgba(2,6,14,0.42) !important;
   backdrop-filter: blur(10px) !important;
   -webkit-backdrop-filter: blur(10px) !important;
   border-radius:calc(18px * var(--compact-ui-scale));

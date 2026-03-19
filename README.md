@@ -121,9 +121,9 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 ### Security & Encryption
 - Wallet encryption flow with automatic daemon restart
 - Lock / Unlock behavior:
-  - Clear feedback for wrong passphrase
-  - Instant unlock without false errors
-  - Immediate locking with UI feedback
+  Clear feedback for wrong passphrase
+  Instant unlock without false errors
+  Immediate locking with UI feedback
 - Safe daemon handling (no unsafe process killing, attach-aware logic)
 
 ### Tools & Diagnostics

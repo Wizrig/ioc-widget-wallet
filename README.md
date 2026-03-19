@@ -163,10 +163,6 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Added optional pre-send address validation (validateaddress) for early error detection
 - Final confirmation step added before broadcast, including fee and total debit breakdown
 
-### Lock / Unlock
-- Modal action order standardized so primary action appears first and Cancel appears second
-- Improved modal layout and positioning in compact mode
-
 ### Balance & Display
 - History redesigned to a full-width 4-column layout (When, Amount, Address, Transaction)
 - Added direct "Open Tx" action from history rows
@@ -192,6 +188,8 @@ Skip the bootstrap prompt to perform a clean sync from the network. The wallet w
 - Refined header, tabs, compact toggle behavior, and general layout
 - Reorganized settings into Wallet Tools, Chain Explorer, and Live Debug
 - Added in-app Wallet Help Center with structured navigation
+- Modal action order standardized so primary action appears first and Cancel appears second
+- Improved modal layout and positioning in compact mode
 
 ### Windows
 - Added explicit Windows app menu (File, Edit, Help)

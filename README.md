@@ -1,7 +1,5 @@
 # IOC Widget Wallet
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
-![License](https://img.shields.io/github/license/Wizrig/ioc-widget-wallet)
-![Release](https://img.shields.io/github/v/release/Wizrig/ioc-widget-wallet)
 
 
 ![IOC Widget Wallet](assets/IOCoin_Widget_Wallet.png)

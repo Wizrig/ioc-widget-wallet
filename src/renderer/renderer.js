@@ -52,10 +52,13 @@ function hideSplash() {
   splashState.visible = false;
   if (typeof _stopLogHeightPoller === 'function') _stopLogHeightPoller();
   if (typeof stopSplashLog === 'function') stopSplashLog();
-  // Transition from splash size (360x280) to compact widget (280x160)
+  // Restore previous window mode — check if user was in expanded mode before splash
+  const savedMode = localStorage.getItem('ioc-compact-mode');
+  const shouldBeCompact = savedMode !== '0'; // default to compact unless saved as expanded
   if (window.ioc && window.ioc.setCompactMode) {
-    window.ioc.setCompactMode(true);
+    window.ioc.setCompactMode(shouldBeCompact);
   }
+  document.body.classList.toggle('compact-mode', shouldBeCompact);
 }
 
 function updateSplashStatus(text) {
@@ -165,35 +168,41 @@ function _stopLogHeightPoller() {
 const MAX_LOG_LINES = 40;
 let _splashLogRunning = false;
 
-function startSplashLog() {
+function appendSplashLogLine(line) {
+  const logEl = document.getElementById('splashLog');
+  if (!logEl) return;
+  const lines = String(line).split('\n').filter(l => l.trim().length > 0);
+  for (const l of lines) {
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    const lower = l.toLowerCase();
+    if (lower.includes('error') || lower.includes('failed')) {
+      div.classList.add('log-err');
+    } else if (lower.includes('accepted') || lower.includes('setbestchain') || lower.includes('successfully')) {
+      div.classList.add('log-ok');
+    }
+    div.textContent = l.length > 120 ? l.substring(0, 120) + '...' : l;
+    logEl.appendChild(div);
+  }
+  while (logEl.children.length > MAX_LOG_LINES) {
+    logEl.removeChild(logEl.firstChild);
+  }
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+async function startSplashLog() {
   if (_splashLogRunning) return;
   if (typeof window.diag === 'undefined') return;
   _splashLogRunning = true;
-  window.diag.onData((line) => {
-    const logEl = document.getElementById('splashLog');
-    if (!logEl) return;
-    // Split multi-line chunks
-    const lines = String(line).split('\n').filter(l => l.trim().length > 0);
-    for (const l of lines) {
-      const div = document.createElement('div');
-      div.className = 'log-line';
-      // Highlight errors and successes
-      const lower = l.toLowerCase();
-      if (lower.includes('error') || lower.includes('failed')) {
-        div.classList.add('log-err');
-      } else if (lower.includes('accepted') || lower.includes('setbestchain') || lower.includes('successfully')) {
-        div.classList.add('log-ok');
-      }
-      div.textContent = l.length > 120 ? l.substring(0, 120) + '...' : l;
-      logEl.appendChild(div);
-    }
-    // Trim old lines
-    while (logEl.children.length > MAX_LOG_LINES) {
-      logEl.removeChild(logEl.firstChild);
-    }
-    // Auto-scroll to bottom
-    logEl.scrollTop = logEl.scrollHeight;
-  });
+
+  // Load recent log history first so the panel isn't empty
+  try {
+    const recent = await window.diag.recentTail(40);
+    if (recent) appendSplashLogLine(recent);
+  } catch (_) {}
+
+  // Then stream new lines as they come in
+  window.diag.onData((line) => appendSplashLogLine(line));
   window.diag.startTail();
 }
 
@@ -630,15 +639,17 @@ function setLock(unlocked, encrypted) {
   const chip = $('ic-lock');
 
   if (state.encrypted === false) {
-    // Unencrypted wallet — grey lock, open padlock shape
-    p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
+    // Unencrypted — open shackle, dim (bad)
+    p.setAttribute('d', 'M6 10V8a6 6 0 1112 0H16a4 4 0 00-8 0v2H5a1 1 0 00-1 1v10a1 1 0 001 1h14a1 1 0 001-1V11a1 1 0 00-1-1H6z');
     if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is unencrypted (click to encrypt it)'; }
   } else if (state.unlocked) {
-    p.setAttribute('d', 'M9 10V7a3 3 0 0 1 6 0h2a5 5 0 1 0-10 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H9zm3 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4z');
-    if (chip) { chip.classList.add('ok'); chip.title = 'Wallet unlocked'; }
+    // Unlocked — open shackle, dim (not secure)
+    p.setAttribute('d', 'M6 10V8a6 6 0 1112 0H16a4 4 0 00-8 0v2H5a1 1 0 00-1 1v10a1 1 0 001 1h14a1 1 0 001-1V11a1 1 0 00-1-1H6z');
+    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet unlocked'; }
   } else {
-    p.setAttribute('d', 'M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm3 8H9V7a3 3 0 016 0v3z');
-    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet locked'; }
+    // Locked — closed shackle, GREEN (secure = good)
+    p.setAttribute('d', 'M6 10V8a6 6 0 1112 0v2h1a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V11a1 1 0 011-1h1zm2 0h8V8a4 4 0 00-8 0v2z');
+    if (chip) { chip.classList.add('ok'); chip.title = 'Wallet locked'; }
   }
 }
 
@@ -1341,6 +1352,19 @@ function __ioc_modal(opts){
     row.appendChild(ok);row.appendChild(ca);box.appendChild(h);box.appendChild(inp);box.appendChild(row);wrap.appendChild(box);document.body.appendChild(wrap);setTimeout(function(){inp.focus();inp.select&&inp.select();},0);
   });
 }
+function __ioc_defaultBackupPath(){
+  var d=new Date(),y=d.getFullYear(),m=('0'+(d.getMonth()+1)).slice(-2),da=('0'+d.getDate()).slice(-2);
+  return '/tmp/wallet-backup-'+y+m+da+'.dat';
+}
+async function __ioc_backup(){
+  try{
+    var path=await __ioc_modal({title:'Save wallet.dat backup to (absolute path)',type:'text',value:__ioc_defaultBackupPath()});
+    if(!path) return;
+    if (/^~\//.test(path)) { alert('Use a full absolute path (no ~). Example: '+__ioc_defaultBackupPath()); return; }
+    await window.ioc.rpc('backupwallet',[path]);
+    alert('Wallet backed up to:\n'+path);
+  }catch(e){ alert('Backup failed: '+(e&&e.message?e.message:e)); }
+}
 function __ioc_defaultDumpPath(){
   var d=new Date(),y=d.getFullYear(),m=('0'+(d.getMonth()+1)).slice(-2),da=('0'+d.getDate()).slice(-2);
   return '/tmp/ioc-wallet-dump-'+y+m+da+'.txt';
@@ -1348,9 +1372,21 @@ function __ioc_defaultDumpPath(){
 async function __ioc_dump(){
   try{
     var pass=await __ioc_modal({title:'Enter wallet passphrase',type:'password',placeholder:'passphrase'}); if(!pass) return;
-    var path=await __ioc_modal({title:'Save dump as absolute path (.txt) — no ~',type:'text',value:__ioc_defaultDumpPath()}); if(!path) return;
+    // Validate passphrase FIRST — shake and reject if wrong
+    try{
+      await window.ioc.rpc('walletpassphrase',[pass,300]);
+    }catch(e){
+      var msg=''+(e&&e.message?e.message:e);
+      if(/incorrect/i.test(msg)||/passphrase/i.test(msg)){
+        // Shake the modal if still visible, otherwise alert
+        var modal=document.querySelector('.ioc-modal');
+        if(modal){ modal.classList.add('shake'); setTimeout(function(){modal.classList.remove('shake');},500); }
+        alert('Incorrect passphrase');
+        return;
+      }
+    }
+    var path=await __ioc_modal({title:'Save dump as absolute path (.txt)',type:'text',value:__ioc_defaultDumpPath()}); if(!path) return;
     if (/^~\//.test(path)) { alert('Use a full absolute path (no ~). Example: '+__ioc_defaultDumpPath()); return; }
-    try{ await window.ioc.rpc('walletpassphrase',[pass,300]); }catch(_){}
     try{ await window.ioc.rpc('dumpwalletRT',[path]); }
     catch(e1){
       var msg=''+(e1&&e1.message?e1.message:e1);
@@ -1359,7 +1395,7 @@ async function __ioc_dump(){
     }
     try{ await window.ioc.rpc('walletlock',[]); }catch(_){}
     alert('Dump written to:\n'+path);
-  }catch(e){ alert('Dump failed'); }
+  }catch(e){ alert('Dump failed: '+(e&&e.message?e.message:e)); }
 }
 async function __ioc_import(){
   try{
@@ -1371,8 +1407,10 @@ async function __ioc_import(){
   }catch(e){ alert('Import failed'); }
 }
 document.addEventListener('DOMContentLoaded',function(){
+  var b=document.getElementById('btnBackup'); if(b&&!b.__wired){ b.addEventListener('click',function(ev){ev.preventDefault();__ioc_backup();}); b.__wired=1; }
   var d=document.getElementById('btnDump'); if(d&&!d.__wired){ d.addEventListener('click',function(ev){ev.preventDefault();__ioc_dump();}); d.__wired=1; }
   var i=document.getElementById('btnImport'); if(i&&!i.__wired){ i.addEventListener('click',function(ev){ev.preventDefault();__ioc_import();}); i.__wired=1; }
+  var ex=document.getElementById('btnExplorer'); if(ex&&!ex.__wired){ ex.addEventListener('click',function(ev){ev.preventDefault();if(window.ioc&&window.ioc.openExternal){window.ioc.openExternal('https://iocexplorer.online/');}else{window.open('https://iocexplorer.online/','_blank');}}); ex.__wired=1; }
 });
 /* END_IOC_WIDGET_TOOLS_MODAL_HOOK */
 
@@ -3462,6 +3500,10 @@ async function loadHistory() {
     isCompact = compact;
     document.body.classList.toggle('compact-mode', isCompact);
     if (isCompact) updateWidgetValues();
+    // Actually resize the window via IPC
+    if (window.ioc && window.ioc.setCompactMode) {
+      window.ioc.setCompactMode(isCompact);
+    }
     // Re-fit balance after expanding to full mode
     if (!isCompact) {
       requestAnimationFrame(() => requestAnimationFrame(() => fitBalance()));

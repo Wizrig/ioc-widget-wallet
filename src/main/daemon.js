@@ -391,6 +391,7 @@ function ensureConf() {
     const conf = [
       'rpcuser=iocoinrpc',
       `rpcpassword=${rpcPassword}`,
+      'synctime=0',
       'addnode=amer.supernode.iocoin.io',
       'addnode=emea.supernode.iocoin.io'
     ].join('\n');

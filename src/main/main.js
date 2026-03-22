@@ -1135,6 +1135,15 @@ function resizeWindowFromCenter(targetWin, size, animate = true) {
   clampWindowTopToVisibleArea(targetWin);
 }
 
+function restoreWindowFocus(targetWin) {
+  if (!targetWin || targetWin.isDestroyed()) return;
+  setTimeout(() => {
+    if (!targetWin || targetWin.isDestroyed()) return;
+    try { targetWin.focus(); } catch (_) {}
+    try { targetWin.webContents.focus(); } catch (_) {}
+  }, 0);
+}
+
 function broadcastCompactModeChange(isCompact) {
   for (const candidate of BrowserWindow.getAllWindows()) {
     if (!candidate || candidate.isDestroyed()) continue;
@@ -1174,6 +1183,7 @@ function registerCompactModeIpc() {
     targetWin.setMaximumSize(size.width, size.height);
     resizeWindowFromCenter(targetWin, size, animate);
     targetWin.setResizable(false);
+    restoreWindowFocus(targetWin);
 
     broadcastCompactModeChange(isCompact);
     return true;
@@ -1189,6 +1199,7 @@ function registerCompactModeIpc() {
     targetWin.setMaximumSize(size.width, size.height);
     resizeWindowFromCenter(targetWin, size, false);
     targetWin.setResizable(false);
+    restoreWindowFocus(targetWin);
     return true;
   });
 
@@ -1205,6 +1216,7 @@ function registerCompactModeIpc() {
     targetWin.setMaximumSize(nextSize.width, nextSize.height);
     resizeWindowFromCenter(targetWin, nextSize, true);
     targetWin.setResizable(false);
+    restoreWindowFocus(targetWin);
     return true;
   });
 

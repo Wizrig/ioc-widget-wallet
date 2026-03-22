@@ -291,6 +291,7 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
 /* Buttons & modals */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1200}
 .sheet{width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+.modal,.sheet{-webkit-app-region:no-drag}
 .title2{font-weight:800;margin-bottom:10px}
 .sheet input,.sheet select{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--ink);margin-top:8px}
 .sheet select{min-height:52px;font-size:17px;line-height:1.35}
@@ -870,7 +871,7 @@ body:not(.compact-mode) #sendModal .sheet{
   justify-content: center;
   transition: opacity 0.3s ease;
   padding-top: 30px; /* Account for traffic lights */
-  -webkit-app-region: drag; /* Allow window dragging */
+  -webkit-app-region: no-drag;
 }
 .splash-overlay.hidden {
   opacity: 0;

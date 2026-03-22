@@ -1,5 +1,31 @@
 const $ = id => document.getElementById(id);
 
+function focusElementSafely(target, options = {}) {
+  const { select = false, maxAttempts = 5, retryDelayMs = 70 } = options;
+  const resolve = () => (typeof target === 'string' ? $(target) : target);
+  let attempts = 0;
+
+  const tryFocus = () => {
+    const el = resolve();
+    if (!el || typeof el.focus !== 'function') return;
+    attempts += 1;
+
+    try { window.focus(); } catch (_) {}
+    try { el.focus({ preventScroll: true }); } catch (_) {
+      try { el.focus(); } catch (_) {}
+    }
+    if (select && typeof el.select === 'function') {
+      try { el.select(); } catch (_) {}
+    }
+
+    if (document.activeElement !== el && attempts < Math.max(1, maxAttempts)) {
+      setTimeout(tryFocus, Math.max(0, retryDelayMs));
+    }
+  };
+
+  requestAnimationFrame(tryFocus);
+}
+
 /** Extract a human-readable error from an RPC/IPC failure. */
 function extractRpcError(e) {
   if (!e) return '';
@@ -2095,8 +2121,7 @@ function populateSavedRecipientsSelect() {
       if (addrInput) addrInput.value = item.address;
       sendModalSelectedRecipientId = item.id;
       setSendRecipientMenuOpen(false);
-      const amt = $('sendAmt');
-      if (amt) requestAnimationFrame(() => amt.focus());
+      focusElementSafely('sendAmt');
     });
     list.appendChild(btn);
   });
@@ -2136,7 +2161,7 @@ function editSavedRecipient(id) {
   if ($('savedRecipientSaveBtn')) $('savedRecipientSaveBtn').textContent = 'Save changes';
   $('savedRecipientCancelBtn')?.classList.remove('hidden');
   if ($('savedRecipientCancelBtn')) $('savedRecipientCancelBtn').textContent = 'Close';
-  $('savedRecipientAliasInput')?.focus();
+  focusElementSafely('savedRecipientAliasInput');
 }
 
 async function copyTextToClipboard(text) {
@@ -2265,8 +2290,7 @@ async function loadAddrs() {
       input.placeholder = 'Label';
       input.style.cssText = 'width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:inherit;font:inherit;padding:2px 6px;';
       labelEl.replaceWith(input);
-      input.focus();
-      input.select();
+      focusElementSafely(input, { select: true });
       const restore = () => {
         const newEl = document.createElement('div');
         newEl.className = 'label';
@@ -2386,7 +2410,7 @@ async function onLockClick() {
     $('encryptPassConfirm').value = '';
     $('encryptErr').textContent = '';
     $('encryptModal').classList.remove('hidden');
-    setTimeout(() => $('encryptPass').focus(), 0);
+    focusElementSafely('encryptPass');
     return;
   }
   if (state.unlocked) {
@@ -2397,7 +2421,7 @@ async function onLockClick() {
     window.ioc.tryRpc('reservebalance', [true, 999999999]);
   } else {
     $('unlockModal').classList.remove('hidden');
-    setTimeout(() => $('pass').focus(), 0);
+    focusElementSafely('pass');
   }
 }
 
@@ -2408,7 +2432,7 @@ function openNewAddrModal() {
   $('newAddrResult').classList.add('hidden');
   $('newAddrResult').textContent = '';
   $('newAddrModal').classList.remove('hidden');
-  setTimeout(() => $('newLabel').focus(), 0);
+  focusElementSafely('newLabel');
 }
 
 let _creatingAddr = false;
@@ -2821,6 +2845,7 @@ function main() {
     populateSavedRecipientsSelect();
     setSendRecipientMenuOpen(false);
     updateSendSummary();
+    focusElementSafely('sendAddr');
     return true;
   }
   $('sendAmt')?.addEventListener('input', updateSendSummary);
@@ -2933,7 +2958,7 @@ function main() {
     setSavedRecipientFormOpen(true);
     $('savedRecipientCancelBtn')?.classList.remove('hidden');
     if ($('savedRecipientCancelBtn')) $('savedRecipientCancelBtn').textContent = 'Close';
-    $('savedRecipientAliasInput')?.focus();
+    focusElementSafely('savedRecipientAliasInput');
   });
   $('savedRecipientSaveBtn')?.addEventListener('click', saveSavedRecipientFromForm);
   $('savedRecipientCancelBtn')?.addEventListener('click', resetSavedRecipientForm);
@@ -3091,10 +3116,7 @@ function promptWithModal({ title, placeholder = '', type = 'text', value = '' })
     overlay.appendChild(sheet);
     document.body.appendChild(overlay);
 
-    setTimeout(() => {
-      input.focus();
-      if (type !== 'password') input.select();
-    }, 0);
+    focusElementSafely(input, { select: type !== 'password' });
   });
 }
 

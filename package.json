@@ -38,12 +38,14 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "extraResources": [
         {
-          "from": "/Users/taino/Desktop/daemon-binaries/win64/iocoind.exe",
+          "from": "assets/daemon/iocoind.exe",
           "to": "iocoind.exe"
         }
       ]
@@ -60,11 +62,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "extraResources": [

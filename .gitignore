@@ -4,7 +4,6 @@
 node_modules/
 dist/
 out/
-assets/daemon/iocoind.exe
 *.asar
 
 # keep scripts/ tracked in repo

@@ -77,9 +77,56 @@ function findCliBinary() {
 // ---------------------------------------------------------------------------
 // getBundledDaemonPath — where the install-source binary lives in the app
 // ---------------------------------------------------------------------------
-function getBundledDaemonPath() {
+function getBundledDaemonCandidates() {
   const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
-  return path.join(resourcesPath, DAEMON_NAME);
+  if (IS_WIN) {
+    return [
+      path.join(resourcesPath, 'daemon', DAEMON_NAME),
+      path.join(resourcesPath, DAEMON_NAME)
+    ];
+  }
+  return [path.join(resourcesPath, DAEMON_NAME)];
+}
+
+function getBundledDaemonPath() {
+  const candidates = getBundledDaemonCandidates();
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
+function getBundledWindowsRuntimeDir() {
+  const resourcesPath = process.resourcesPath || path.dirname(app.getAppPath());
+  return path.join(resourcesPath, 'daemon');
+}
+
+function copyDirectoryContents(srcDir, destDir) {
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectoryContents(srcPath, destPath);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    fs.copyFileSync(srcPath, destPath);
+  }
+}
+
+function isWindowsRuntimeComplete() {
+  const targetDir = path.dirname(DAEMON_PATH);
+  const runtimeDir = getBundledWindowsRuntimeDir();
+  if (!fs.existsSync(runtimeDir)) {
+    return fs.existsSync(DAEMON_PATH);
+  }
+  const runtimeFiles = fs.readdirSync(runtimeDir, { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => entry.name);
+  if (!runtimeFiles.length) return fs.existsSync(DAEMON_PATH);
+  return runtimeFiles.every(name => fs.existsSync(path.join(targetDir, name)));
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +135,7 @@ function getBundledDaemonPath() {
 async function installDaemonWithAdmin() {
   const src = getBundledDaemonPath();
   if (!fs.existsSync(src)) {
-    throw new Error(`Bundled ${DAEMON_NAME} not found at: ${src}`);
+    throw new Error(`Bundled ${DAEMON_NAME} not found at: ${getBundledDaemonCandidates().join(' | ')}`);
   }
 
   console.log('[daemon] Installing daemon with admin privileges...');
@@ -134,19 +181,30 @@ function installDaemonMac(src) {
 // Windows: copy to LocalAppData (no admin needed), or elevate via PowerShell
 function installDaemonWin(src) {
   const targetDir = path.dirname(DAEMON_PATH);
+  const sourceDir = path.dirname(src);
+  const sourceIsRuntimeFolder = path.basename(sourceDir).toLowerCase() === 'daemon'
+    && fs.existsSync(path.join(sourceDir, DAEMON_NAME));
+
   return new Promise((resolve, reject) => {
     try {
       // Try non-elevated first (LocalAppData doesn't need admin)
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
       }
-      fs.copyFileSync(src, DAEMON_PATH);
+      if (sourceIsRuntimeFolder) {
+        copyDirectoryContents(sourceDir, targetDir);
+      } else {
+        fs.copyFileSync(src, DAEMON_PATH);
+      }
       console.log('[daemon] Install succeeded (non-elevated)');
       resolve(true);
     } catch (e) {
       // If permission denied, try elevated via PowerShell
       console.log('[daemon] Non-elevated install failed, trying elevated...');
-      const psScript = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','mkdir "${targetDir}" & copy /Y "${src}" "${DAEMON_PATH}"' -Verb RunAs -Wait`;
+      const copyCommand = sourceIsRuntimeFolder
+        ? `mkdir "${targetDir}" & xcopy /E /I /Y "${sourceDir}\\*" "${targetDir}\\"`
+        : `mkdir "${targetDir}" & copy /Y "${src}" "${DAEMON_PATH}"`;
+      const psScript = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','${copyCommand}' -Verb RunAs -Wait`;
       execFile('powershell.exe', ['-Command', psScript], { timeout: 60000 }, (err) => {
         if (err) {
           reject(new Error(err.message || 'Admin install cancelled or failed'));
@@ -225,6 +283,13 @@ function verifyDaemonBinary() {
   //    On Windows, skip — iocoind.exe may hang if VC++ runtime is missing,
   //    and file-exists is sufficient; runtime errors surface on actual start.
   if (IS_WIN) {
+    if (!isWindowsRuntimeComplete()) {
+      return {
+        ok: false,
+        error: 'Windows daemon runtime is incomplete (missing companion files beside iocoind.exe)',
+        code: 'RUNTIME_INCOMPLETE'
+      };
+    }
     console.log('[daemon] Verification passed: binary exists (Windows, skipping exec test)');
     return { ok: true };
   }

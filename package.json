@@ -45,8 +45,8 @@
       ],
       "extraResources": [
         {
-          "from": "assets/daemon/iocoind.exe",
-          "to": "iocoind.exe"
+          "from": "C:/ioc-win64-runtime",
+          "to": "daemon"
         }
       ]
     },

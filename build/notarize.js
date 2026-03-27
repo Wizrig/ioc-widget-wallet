@@ -17,7 +17,7 @@ exports.default = async function notarizing(context) {
   await notarize({
     appPath,
     tool: 'notarytool',
-    appleApiKey: '/Users/taino/Desktop/MISC2/Derek/AuthKey_64D35XNKWT.p8',
+    appleApiKey: '/Users/taino/Desktop/Derek/AuthKey_64D35XNKWT.p8',
     appleApiKeyId: '64D35XNKWT',
     appleApiIssuer: '69a6de92-e31d-47e3-e053-5b8c7c11a4d1',
   });

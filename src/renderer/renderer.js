@@ -45,6 +45,20 @@ function showSplash(text) {
   if (typeof startSplashLog === 'function') startSplashLog();
 }
 
+// Update splash status during rebootstrap download (if splash is still visible)
+if (window.ioc && window.ioc.onBootstrapProgress) {
+  window.ioc.onBootstrapProgress((p) => {
+    const status = document.getElementById('splashStatus');
+    if (status && splashState.visible) {
+      if (p.percent) {
+        status.textContent = 'Downloading bootstrap... ' + Math.round(p.percent) + '%';
+      } else if (p.message) {
+        status.textContent = p.message;
+      }
+    }
+  });
+}
+
 function hideSplash() {
   const overlay = $('splashOverlay');
   if (overlay) overlay.classList.add('hidden');
@@ -246,16 +260,26 @@ function toggleSplashDebug() {
 // ===== Rebootstrap Advisor =====
 let _rebootstrapChecked = false;
 let _rebootstrapDismissed = false;
+let _rebootstrapRetries = 0;
+const MAX_REBOOTSTRAP_RETRIES = 5;
 
 async function checkForNewerBootstrap(localHeight) {
-  if (_rebootstrapChecked || _rebootstrapDismissed) return;
+  if (_rebootstrapDismissed) return;
+  if (_rebootstrapChecked) return;
   if (!localHeight || localHeight < 1000) return;
-  _rebootstrapChecked = true;
 
   try {
     const meta = await window.ioc.getDailyBootstrapMetadata();
-    if (!meta || !meta.ok || !meta.height) { _rebootstrapChecked = false; return; }
+    if (!meta || !meta.ok || !meta.height) {
+      _rebootstrapRetries++;
+      if (_rebootstrapRetries >= MAX_REBOOTSTRAP_RETRIES) {
+        _rebootstrapChecked = true;
+        console.log('[rebootstrap] Max retries reached, giving up');
+      }
+      return;
+    }
 
+    _rebootstrapChecked = true;
     const ahead = meta.height - localHeight;
     const MIN_BLOCKS_AHEAD = 2000;
     if (ahead < MIN_BLOCKS_AHEAD) return;
@@ -333,7 +357,10 @@ async function checkForNewerBootstrap(localHeight) {
     }
   } catch (err) {
     console.warn('[rebootstrap] Check failed:', err);
-    _rebootstrapChecked = false;
+    _rebootstrapRetries++;
+    if (_rebootstrapRetries >= MAX_REBOOTSTRAP_RETRIES) {
+      _rebootstrapChecked = true;
+    }
   }
 }
 
@@ -818,6 +845,14 @@ async function refresh() {
         const stalledLong = splashState.stalledSince && (Date.now() - splashState.stalledSince > 30000);
 
         if (closeEnough || vpSynced || stalledLong) {
+          // Check for newer bootstrap BEFORE hiding splash
+          await checkForNewerBootstrap(blocks);
+          // If rebootstrap modal is showing, don't hide splash yet
+          const rebootModal = document.getElementById('rebootstrapModal');
+          if (rebootModal && !rebootModal.classList.contains('hidden')) {
+            console.log('[splash] Rebootstrap modal showing, waiting for user decision');
+            return;
+          }
           // Synced — hide splash and show wallet
           const reason = closeEnough ? `within ${SPLASH_BLOCKS_THRESHOLD} blocks` : vpSynced ? `vp=${vp}` : 'stalled 30s';
           console.log(`[splash] Sync complete (${reason}), hiding splash`);
@@ -855,6 +890,10 @@ async function refresh() {
       }
     } else {
       // Splash already hidden - normal connection handling
+      // Still check for newer bootstrap if not checked during splash
+      if (blocks > 0 && !_rebootstrapChecked && !_rebootstrapDismissed) {
+        checkForNewerBootstrap(blocks);
+      }
       if (!connectionState.connected) {
         hideConnectBanner();
         connectionState.connected = true;

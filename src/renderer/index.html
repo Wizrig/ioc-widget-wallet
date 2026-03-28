@@ -45,6 +45,7 @@
     <button class="tab active" data-tab="overview">Overview</button>
     <button class="tab" data-tab="history">History</button>
     <button class="tab" data-tab="address">Address Book</button>
+    <button class="tab" data-tab="recipients">Recipients</button>
     <button class="tab" data-tab="settings">Settings</button>
   </div>
 
@@ -103,6 +104,18 @@
           <button id="newAddrBtn" class="btn btn-ok sm">+ New Address</button>
         </div>
         <div id="addrGrid" class="addr-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-recipients" class="page hidden">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Saved Recipients</h2>
+        <button id="btnAddRecipient" class="settings-btn">+ Add</button>
+      </div>
+      <div id="recipients-list" class="recipients-list">
+        <div class="recipients-empty">No saved recipients yet. Click + Add to save an address.</div>
       </div>
     </div>
   </div>

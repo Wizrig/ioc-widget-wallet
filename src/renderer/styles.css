@@ -598,6 +598,21 @@ body{margin:0;background:#050A12;background:var(--bg);color:var(--ink);font:14px
   color: #fff;
 }
 
+/* Recipients */
+.panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.panel-header h2{font-size:14px;font-weight:600;color:#fff;margin:0}
+.recipients-list{display:flex;flex-direction:column;gap:8px}
+.recipients-empty{color:rgba(255,255,255,0.4);font-size:12px;text-align:center;padding:24px 0}
+.recipient-card{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 14px;transition:background 0.15s}
+.recipient-card:hover{background:rgba(255,255,255,0.07)}
+.recipient-info{flex:1;min-width:0}
+.recipient-label{font-size:13px;font-weight:500;color:#fff;margin-bottom:2px}
+.recipient-addr{font-size:11px;color:rgba(255,255,255,0.5);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recipient-actions{display:flex;gap:6px;margin-left:10px;flex-shrink:0}
+.recipient-actions button{background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:12px;padding:4px 6px;border-radius:4px;transition:all 0.15s}
+.recipient-actions button:hover{color:#fff;background:rgba(255,255,255,0.1)}
+.recipient-actions .btn-del:hover{color:#ff6b6b;background:rgba(255,107,107,0.1)}
+
 /* Diagnostics */
 .settings-diag .live-tail {
   height: 150px;

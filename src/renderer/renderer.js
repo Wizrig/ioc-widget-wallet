@@ -1079,6 +1079,7 @@ function switchTab(name) {
   document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
   if (name === 'history') loadHistory();
   if (name === 'address') loadAddrs();
+  if (name === 'recipients') renderRecipients();
   // Re-fit balance after switching to Overview (double RAF ensures layout is settled)
   if (name === 'overview') {
     requestAnimationFrame(() => requestAnimationFrame(() => fitBalance()));
@@ -1452,6 +1453,102 @@ document.addEventListener('DOMContentLoaded',function(){
   var ex=document.getElementById('btnExplorer'); if(ex&&!ex.__wired){ ex.addEventListener('click',function(ev){ev.preventDefault();if(window.ioc&&window.ioc.openExternal){window.ioc.openExternal('https://iocexplorer.online/');}else{window.open('https://iocexplorer.online/','_blank');}}); ex.__wired=1; }
 });
 /* END_IOC_WIDGET_TOOLS_MODAL_HOOK */
+
+// ===== SAVED RECIPIENTS =====
+const RECIP_KEY = 'ioc-saved-recipients';
+function loadRecipients() { try { return JSON.parse(localStorage.getItem(RECIP_KEY)) || []; } catch(_) { return []; } }
+function saveRecipients(list) { localStorage.setItem(RECIP_KEY, JSON.stringify(list)); }
+
+function __escHtml(s) { var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function renderRecipients() {
+  const list = document.getElementById('recipients-list');
+  if (!list) return;
+  const recipients = loadRecipients();
+  if (recipients.length === 0) {
+    list.innerHTML = '<div class="recipients-empty">No saved recipients yet. Click + Add to save an address.</div>';
+    return;
+  }
+  list.innerHTML = recipients.map(function(r, i) {
+    return '<div class="recipient-card" data-idx="'+i+'">' +
+      '<div class="recipient-info">' +
+        '<div class="recipient-label">'+__escHtml(r.label)+'</div>' +
+        '<div class="recipient-addr">'+__escHtml(r.address)+'</div>' +
+      '</div>' +
+      '<div class="recipient-actions">' +
+        '<button class="btn-send" title="Send to this address">Send</button>' +
+        '<button class="btn-edit" title="Edit">Edit</button>' +
+        '<button class="btn-del" title="Delete">Del</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  list.querySelectorAll('.recipient-card').forEach(function(card) {
+    var idx = parseInt(card.dataset.idx, 10);
+    card.querySelector('.btn-send').addEventListener('click', function() { recipientSend(idx); });
+    card.querySelector('.btn-edit').addEventListener('click', function() { recipientEdit(idx); });
+    card.querySelector('.btn-del').addEventListener('click', function() { recipientDelete(idx); });
+  });
+}
+
+async function recipientAdd() {
+  var label = await __ioc_modal({title:'Recipient label',type:'text',placeholder:'e.g. My Exchange'}); if(!label) return;
+  var addr = await __ioc_modal({title:'IOCoin address',type:'text',placeholder:'ioc address'}); if(!addr) return;
+  try {
+    var valid = await window.ioc.rpc('validateaddress',[addr]);
+    if (!valid || !valid.isvalid) { alert('Invalid IOCoin address'); return; }
+  } catch(_) {}
+  var list = loadRecipients();
+  list.push({label:label.trim(), address:addr.trim()});
+  saveRecipients(list);
+  renderRecipients();
+}
+
+async function recipientEdit(idx) {
+  var list = loadRecipients();
+  var r = list[idx]; if(!r) return;
+  var label = await __ioc_modal({title:'Edit label',type:'text',value:r.label}); if(label===null) return;
+  var addr = await __ioc_modal({title:'Edit address',type:'text',value:r.address}); if(addr===null) return;
+  if (addr.trim() !== r.address) {
+    try {
+      var valid = await window.ioc.rpc('validateaddress',[addr.trim()]);
+      if (!valid || !valid.isvalid) { alert('Invalid IOCoin address'); return; }
+    } catch(_) {}
+  }
+  list[idx] = {label:(label||'').trim()||r.label, address:(addr||'').trim()||r.address};
+  saveRecipients(list);
+  renderRecipients();
+}
+
+function recipientDelete(idx) {
+  if (!confirm('Delete this recipient?')) return;
+  var list = loadRecipients();
+  list.splice(idx, 1);
+  saveRecipients(list);
+  renderRecipients();
+}
+
+function recipientSend(idx) {
+  var list = loadRecipients();
+  var r = list[idx]; if(!r) return;
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.page').forEach(function(p){p.classList.add('hidden');});
+  var overviewTab = document.querySelector('[data-tab="overview"]');
+  if(overviewTab) overviewTab.classList.add('active');
+  var overviewPage = document.getElementById('tab-overview');
+  if(overviewPage) overviewPage.classList.remove('hidden');
+  var sendModal = document.getElementById('sendModal');
+  if(sendModal) sendModal.classList.remove('hidden');
+  var addrInput = document.getElementById('sendAddr');
+  if(addrInput) addrInput.value = r.address;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('btnAddRecipient');
+  if (btn) btn.addEventListener('click', function(ev) { ev.preventDefault(); recipientAdd(); });
+  renderRecipients();
+});
+// ===== END SAVED RECIPIENTS =====
 
 function __ensureHistoryScroller(){
   const pane = document.querySelector('#history-pane');

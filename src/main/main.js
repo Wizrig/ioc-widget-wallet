@@ -146,11 +146,29 @@ async function initDaemon() {
   // Check pidfile / pgrep before spawning to avoid double-spawn.
   const existingPid = findDaemonPid();
   if (existingPid) {
-    console.log('[daemon] RPC unresponsive but process alive (PID', existingPid + '), attaching...');
-    daemonState.running = true;
-    daemonState.startedByUs = false;
-    daemonState.pid = existingPid;
-    return { ok: true, attached: true };
+    // Detect zombie/exiting processes (kernel-stuck shutdown).
+    // STAT containing 'E' or 'Z' means it's exiting/dead and won't recover.
+    let isZombie = false;
+    try {
+      const statOut = require('child_process').execSync(`ps -p ${existingPid} -o stat=`, { encoding: 'utf8', timeout: 2000 }).trim();
+      if (/[EZ]/.test(statOut)) {
+        console.log('[daemon] PID', existingPid, 'is zombie/exiting (STAT=' + statOut + '), ignoring');
+        isZombie = true;
+      }
+    } catch (_) {}
+
+    if (!isZombie) {
+      console.log('[daemon] RPC unresponsive but process alive (PID', existingPid + '), attaching...');
+      daemonState.running = true;
+      daemonState.startedByUs = false;
+      daemonState.pid = existingPid;
+      return { ok: true, attached: true };
+    }
+    // Zombie — clean up stale pidfile and proceed to start fresh
+    try {
+      const pidFile = path.join(DATA_DIR, 'iocoind.pid');
+      if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
+    } catch (_) {}
   }
 
   // Step 3: Check if bootstrap is needed BEFORE starting daemon
@@ -245,23 +263,20 @@ async function stopDaemonForBootstrapApply() {
     }
   }
 
-  await waitForDaemonStop(12000, 400);
+  // Daemon needs LOTS of time to flush BDB and close LevelDB cleanly.
+  // SIGKILL during flush leaves macOS process in UEs zombie state.
+  // Wait up to 5 MINUTES for graceful shutdown — never SIGKILL.
+  await waitForDaemonStop(60000, 500);
+  let processGone = await waitForProcessExit(240000, 1000);
 
-  let processGone = await waitForProcessExit(12000, 300);
   if (!processGone) {
+    // Last resort: SIGTERM (still graceful, allows flushing)
     let pid = findDaemonPid();
-    if (pid) { killDaemonByPid(pid, 'SIGTERM'); processGone = await waitForProcessExit(5000, 250); }
+    if (pid) { killDaemonByPid(pid, 'SIGTERM'); processGone = await waitForProcessExit(60000, 1000); }
   }
   if (!processGone) {
-    let pid = findDaemonPid();
-    if (pid) { killDaemonByPid(pid, 'SIGKILL'); processGone = await waitForProcessExit(5000, 250); }
-  }
-  if (!processGone) {
-    killDaemonByName('SIGKILL');
-    processGone = await waitForProcessExit(5000, 250);
-  }
-  if (!processGone) {
-    return { ok: false, error: 'Daemon process did not fully exit before bootstrap apply' };
+    // Daemon won't stop — abort instead of SIGKILL'ing into a zombie state
+    return { ok: false, error: 'Daemon did not stop after 5 minutes. Please close the wallet and try again.' };
   }
 
   await new Promise(r => setTimeout(r, 3000));
@@ -947,7 +962,74 @@ app.whenReady().then(async () => {
   // Splash screen will display while daemon initializes
   createWindow();
 
-  // Initialize daemon in background (install+verify, check bootstrap, start if ready)
+  // Pre-launch rebootstrap check: read local height from debug.log,
+  // compare with GitHub bootstrap. If bootstrap is ahead, wipe chain data
+  // so initDaemon's needsBootstrap() returns true and the renderer runs
+  // the standard bootstrap download flow (instead of loading old chain).
+  try {
+    const hasBlockFiles = fs.existsSync(path.join(DATA_DIR, 'blk0001.dat'));
+    if (hasBlockFiles) {
+      const localHeight = (() => {
+        try {
+          if (!fs.existsSync(_debugLogPath)) return 0;
+          const fd = fs.openSync(_debugLogPath, 'r');
+          const stat = fs.fstatSync(fd);
+          const size = Math.min(stat.size, 16384);
+          const buf = Buffer.alloc(size);
+          fs.readSync(fd, buf, 0, size, stat.size - size);
+          fs.closeSync(fd);
+          const re = /height=(\d+)/g;
+          let m, h = 0;
+          while ((m = re.exec(buf.toString('utf8'))) !== null) h = parseInt(m[1], 10);
+          return h;
+        } catch (_) { return 0; }
+      })();
+      console.log('[rebootstrap] Pre-launch local height:', localHeight);
+      if (localHeight > 1000) {
+        const meta = await bootstrap.fetchDailyBootstrapMetadata();
+        console.log('[rebootstrap] Bootstrap metadata:', meta?.ok ? `height=${meta.height}` : meta?.error);
+        if (meta && meta.ok && meta.height && meta.height > localHeight) {
+          const ahead = meta.height - localHeight;
+          console.log('[rebootstrap] Bootstrap is', ahead, 'blocks ahead of local');
+          // Stop any running daemon FULLY before wiping chain data, otherwise
+          // daemon hangs in shutdown and holds LevelDB lock blocking restart.
+          // IOC daemon needs LOTS of time to flush — wait up to 5 minutes.
+          let daemonStopped = true;
+          try {
+            const { stopViaCli, stopViaHttp } = require('./daemon');
+            const cli = findCliBinary();
+            if (cli.found) { try { await stopViaCli(cli.path); } catch (_) {} }
+            else { try { await stopViaHttp(); } catch (_) {} }
+            // Wait up to 5 minutes for full process exit
+            daemonStopped = false;
+            for (let w = 0; w < 300; w++) {
+              await new Promise(r => setTimeout(r, 1000));
+              const check = await isDaemonRunning();
+              if (!check.running && !findDaemonPid()) { daemonStopped = true; break; }
+            }
+          } catch (_) {}
+          if (!daemonStopped) {
+            console.log('[rebootstrap] Daemon did not stop cleanly — skipping chain wipe to avoid corruption');
+          } else {
+            console.log('[rebootstrap] Daemon stopped — wiping chain data');
+            // Wipe chain data — needsBootstrap() will return true after this
+          const chainFiles = ['blk0001.dat','blk0002.dat','blkindex.dat','txleveldb'];
+          for (const f of chainFiles) {
+            const p = path.join(DATA_DIR, f);
+            if (fs.existsSync(p)) {
+              try { fs.rmSync(p, { recursive: true, force: true }); console.log('[rebootstrap] Removed:', f); }
+              catch (e) { console.warn('[rebootstrap] Failed to remove', f, e.message); }
+            }
+          }
+          try { bootstrap.cleanupBootstrap(); } catch (_) {}
+          }
+        }
+      }
+    }
+  } catch (e) { console.log('[rebootstrap] Pre-launch error:', e.message); }
+
+  // Initialize daemon — if chain data was wiped above, needsBootstrap() returns true
+  // and renderer runs the standard download → extract → apply → start flow
   const daemonResult = await initDaemon();
   console.log('[app] Daemon init result:', daemonResult);
 

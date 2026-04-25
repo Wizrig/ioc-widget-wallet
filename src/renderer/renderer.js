@@ -281,7 +281,7 @@ async function checkForNewerBootstrap(localHeight) {
 
     _rebootstrapChecked = true;
     const ahead = meta.height - localHeight;
-    const MIN_BLOCKS_AHEAD = 2000;
+    const MIN_BLOCKS_AHEAD = 1;
     if (ahead < MIN_BLOCKS_AHEAD) return;
 
     // Estimate time saved (~30 blocks/min average sync speed)
@@ -844,15 +844,16 @@ async function refresh() {
         }
         const stalledLong = splashState.stalledSince && (Date.now() - splashState.stalledSince > 30000);
 
+        // ALWAYS check for newer bootstrap on every refresh while splash is visible.
+        // Awaited so the modal has a chance to show before any splash dismiss logic runs.
+        await checkForNewerBootstrap(blocks);
+        // If rebootstrap modal is showing, freeze splash here regardless of sync state
+        const _rebootCheck = document.getElementById('rebootstrapModal');
+        if (_rebootCheck && !_rebootCheck.classList.contains('hidden')) {
+          return;
+        }
+
         if (closeEnough || vpSynced || stalledLong) {
-          // Check for newer bootstrap BEFORE hiding splash
-          await checkForNewerBootstrap(blocks);
-          // If rebootstrap modal is showing, don't hide splash yet
-          const rebootModal = document.getElementById('rebootstrapModal');
-          if (rebootModal && !rebootModal.classList.contains('hidden')) {
-            console.log('[splash] Rebootstrap modal showing, waiting for user decision');
-            return;
-          }
           // Synced — hide splash and show wallet
           const reason = closeEnough ? `within ${SPLASH_BLOCKS_THRESHOLD} blocks` : vpSynced ? `vp=${vp}` : 'stalled 30s';
           console.log(`[splash] Sync complete (${reason}), hiding splash`);

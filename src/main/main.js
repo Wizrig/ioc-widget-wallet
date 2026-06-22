@@ -211,8 +211,13 @@ async function initDaemon() {
       return { ok: false, error: 'Daemon crashed on startup. Install Microsoft Visual C++ Redistributable (x64) from https://aka.ms/vs/17/release/vc_redist.x64.exe' };
     }
   }
+  const pid = findDaemonPid();
+  if (pid) {
+    console.log('[daemon] Timeout reached but process still alive (PID', pid + ') — proceeding, renderer will poll');
+    return { ok: true, started: true, path: DAEMON_PATH };
+  }
   const timeoutError = daemonStartupTimeoutMessage();
-  console.error('[daemon] Daemon not responsive after startup timeout');
+  console.error('[daemon] Daemon not responsive after startup timeout and process is gone');
   daemonState.error = timeoutError;
   return { ok: false, error: timeoutError };
 }

@@ -1215,16 +1215,17 @@ body.splash-active:not(.splash-syncing) .splash-sync-section2 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 10px;
 }
 body.splash-active:not(.splash-syncing) .splash-meta {
   margin: 0;
   max-width: min(700px, calc(100vw - 72px));
   color: rgba(255,255,255,0.82);
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.4;
   letter-spacing: 0.01em;
+  text-align: center;
 }
 body.splash-active:not(.splash-syncing) .splash-stage {
   display: none;

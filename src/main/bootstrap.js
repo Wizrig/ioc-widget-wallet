@@ -13,7 +13,7 @@ const { createWriteStream, createReadStream } = require('node:fs');
 const { pipeline } = require('node:stream/promises');
 const { DATA_DIR, CONF_PATH, isFirstRun } = require('../shared/constants');
 
-const BOOTSTRAP_URL = 'https://iocbootstrap.s3.us-east-2.amazonaws.com/bootstrap.zip';
+const BOOTSTRAP_URL = 'https://iostrap.iocoin.io/bootstrap.zip';
 const DAILY_BOOTSTRAP_RELEASE_API_URL = 'https://api.github.com/repos/IOCoin/DIONS/releases/tags/DIONS-BootStrap';
 // Download to temp folder to avoid corrupting wallet data
 const BOOTSTRAP_TEMP_DIR = path.join(os.tmpdir(), 'ioc-bootstrap');

@@ -2049,7 +2049,7 @@ async function loadHistory() {
           ev.preventDefault();
           ev.stopPropagation();
           if (window.ioc && typeof window.ioc.openExternal === 'function') {
-            window.ioc.openExternal(`https://iocexplorer.online/#tx/${encodeURIComponent(txid)}`);
+            window.ioc.openExternal(`https://chain.iocoin.io/tx/${encodeURIComponent(txid)}`);
           }
         });
         txCell.appendChild(txBtn);
@@ -3237,7 +3237,7 @@ function initWalletToolsActions() {
   wireClickOnce('btnExplorer', (event) => {
     event.preventDefault();
     if (window.ioc?.openExternal) {
-      window.ioc.openExternal('https://iocexplorer.online');
+      window.ioc.openExternal('https://chain.iocoin.io/');
     }
   });
 }

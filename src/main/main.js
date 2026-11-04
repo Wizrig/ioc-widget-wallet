@@ -698,7 +698,7 @@ async function fetchRemoteTip() {
     // Use cryptoid.info IOC explorer API
     const https = require('https');
     const height = await new Promise((resolve, reject) => {
-      const req = https.get('https://chainz.cryptoid.info/ioc/api.dws?q=getblockcount', {
+      const req = https.get('https://chain.iocoin.io/api.dws?q=getblockcount', {
         timeout: 5000
       }, (res) => {
         let data = '';
@@ -1035,7 +1035,7 @@ function applyMainMenu() {
         {
           label: 'Open Explorer',
           click: () => {
-            shell.openExternal('https://iocexplorer.online/');
+            shell.openExternal('https://chain.iocoin.io/');
           }
         }
       ]

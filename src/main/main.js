@@ -658,10 +658,10 @@ async function fetchRemoteTip() {
   }
 
   try {
-    // Use cryptoid.info IOC explorer API
+    // Network tip from our own explorer (chain.iocoin.io, chainz-compatible API)
     const https = require('https');
     const height = await new Promise((resolve, reject) => {
-      const req = https.get('https://chainz.cryptoid.info/ioc/api.dws?q=getblockcount', {
+      const req = https.get('https://chain.iocoin.io/api.dws?q=getblockcount', {
         timeout: 5000
       }, (res) => {
         let data = '';

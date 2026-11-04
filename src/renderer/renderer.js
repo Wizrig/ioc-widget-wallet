@@ -1451,7 +1451,7 @@ document.addEventListener('DOMContentLoaded',function(){
   var b=document.getElementById('btnBackup'); if(b&&!b.__wired){ b.addEventListener('click',function(ev){ev.preventDefault();__ioc_backup();}); b.__wired=1; }
   var d=document.getElementById('btnDump'); if(d&&!d.__wired){ d.addEventListener('click',function(ev){ev.preventDefault();__ioc_dump();}); d.__wired=1; }
   var i=document.getElementById('btnImport'); if(i&&!i.__wired){ i.addEventListener('click',function(ev){ev.preventDefault();__ioc_import();}); i.__wired=1; }
-  var ex=document.getElementById('btnExplorer'); if(ex&&!ex.__wired){ ex.addEventListener('click',function(ev){ev.preventDefault();if(window.ioc&&window.ioc.openExternal){window.ioc.openExternal('https://iocexplorer.online/');}else{window.open('https://iocexplorer.online/','_blank');}}); ex.__wired=1; }
+  var ex=document.getElementById('btnExplorer'); if(ex&&!ex.__wired){ ex.addEventListener('click',function(ev){ev.preventDefault();if(window.ioc&&window.ioc.openExternal){window.ioc.openExternal('https://chain.iocoin.io/');}else{window.open('https://chain.iocoin.io/','_blank');}}); ex.__wired=1; }
 });
 /* END_IOC_WIDGET_TOOLS_MODAL_HOOK */
 

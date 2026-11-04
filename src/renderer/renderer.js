@@ -670,13 +670,13 @@ function setLock(unlocked, encrypted) {
     p.setAttribute('d', 'M6 10V8a6 6 0 1112 0H16a4 4 0 00-8 0v2H5a1 1 0 00-1 1v10a1 1 0 001 1h14a1 1 0 001-1V11a1 1 0 00-1-1H6z');
     if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet is unencrypted (click to encrypt it)'; }
   } else if (state.unlocked) {
-    // Unlocked — open shackle, dim (not secure)
+    // Unlocked — open shackle, lit blue like the staking and peers icons
     p.setAttribute('d', 'M6 10V8a6 6 0 1112 0H16a4 4 0 00-8 0v2H5a1 1 0 00-1 1v10a1 1 0 001 1h14a1 1 0 001-1V11a1 1 0 00-1-1H6z');
-    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet unlocked'; }
+    if (chip) { chip.classList.add('ok'); chip.title = 'Wallet unlocked'; }
   } else {
-    // Locked — closed shackle, GREEN (secure = good)
+    // Locked — closed shackle, grey
     p.setAttribute('d', 'M6 10V8a6 6 0 1112 0v2h1a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V11a1 1 0 011-1h1zm2 0h8V8a4 4 0 00-8 0v2z');
-    if (chip) { chip.classList.add('ok'); chip.title = 'Wallet locked'; }
+    if (chip) { chip.classList.remove('ok'); chip.title = 'Wallet locked'; }
   }
 }
 

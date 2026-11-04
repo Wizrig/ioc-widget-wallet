@@ -13,7 +13,7 @@
     "build": "electron-builder --mac dmg",
     "build:mac": "electron-builder --mac dmg",
     "build:win": "electron-builder --win nsis",
-    "build:linux": "electron-builder --linux AppImage deb -c.productName=IOC-Widget-Wallet -c.linux.desktop.Name=\"IOC Widget Wallet\""
+    "build:linux": "electron-builder --linux deb -c.productName=IOC-Widget-Wallet -c.linux.desktop.Name=\"IOC Widget Wallet\" && electron-builder --linux AppImage -c.productName=IOC-Widget-Wallet -c.linux.desktop.Name=\"IOC Widget Wallet\" -c.afterPack=build/afterPack-appimage.js"
   },
   "build": {
     "appId": "io.iocoin.wallet",

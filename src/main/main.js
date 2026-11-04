@@ -3,9 +3,6 @@
 try { require('./ipc-ui'); } catch {}
 try { require('./rpc-compat').init(); } catch {}
 const {app, BrowserWindow, ipcMain} = require('electron');
-// Ubuntu 23.10+ blocks the user namespaces Chromium's sandbox needs, and an AppImage can't
-// ship the root-owned chrome-sandbox helper, so without this the AppImage refuses to start.
-if (process.platform === 'linux' && process.env.APPIMAGE) app.commandLine.appendSwitch('no-sandbox');
 const path = require('path');
 const fs = require('fs');
 const {execFile} = require('child_process');
